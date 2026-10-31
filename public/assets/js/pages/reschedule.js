@@ -5,10 +5,11 @@
   if (!user) return;
   const main = document.getElementById("main");
   const isAdmin = user.role === "admin";
-  if (!isAdmin && user.role !== "faculty") { main.innerHTML = `<div class="panel empty">Only Admins and faculty use this page.</div>`; return; }
+  const isCoordinator = user.role === "department_coordinator";
+  if (!isAdmin && !isCoordinator && user.role !== "faculty") { main.innerHTML = `<div class="panel empty">Only Admins, department coordinators, and faculty use this page.</div>`; return; }
 
-  main.innerHTML = `<div class="page-head"><div><h1>${isAdmin ? "Reschedule" : "Report times you can't teach"}</h1>
-      <div class="sub">${isAdmin ? "Changes are permanent. The repair moves as few sessions as possible and nothing changes until you approve it." : "This becomes a proposal. An Admin approves it before anything in the timetable moves."}</div></div></div>
+  main.innerHTML = `<div class="page-head"><div><h1>${isAdmin ? "Reschedule" : isCoordinator ? "Request a department session change" : "Report times you can't teach"}</h1>
+      <div class="sub">${isAdmin ? "Changes are permanent. The repair moves as few sessions as possible and nothing changes until you approve it." : isCoordinator ? `Request removal of a scheduled session in ${esc(user.department || "your department")}. An Admin reviews the proposed timetable before anything changes.` : "This becomes a proposal. An Admin approves it before anything in the timetable moves."}</div></div></div>
     <div class="cols"><div class="stack" id="left"></div><div class="stack" id="right"></div></div>`;
   const left = document.getElementById("left"), right = document.getElementById("right");
 
@@ -31,6 +32,37 @@
         const r = await CIT.busy(ev.currentTarget, "Repairing, up to 30 s", () => CIT.api("disruptions/upload.php", { text }));
         CIT.toast(r.status === "pending" ? `Proposal ${r.proposal_id}: ${r.summary.sessions_moved} sessions move` : "No valid repair exists", r.status !== "pending");
         await list(); show(r.proposal_id);
+      } catch (e) { out.innerHTML = CIT.errorHtml(e); }
+    };
+  } else if (isCoordinator) {
+    left.innerHTML = `<div class="panel"><h2>Request a session change</h2>
+      <p class="sub">Enter a scheduled session ID from your department and explain why it should be removed. The repair engine will prepare a proposal; an Admin must approve it before it takes effect.</p>
+      <div class="field"><label for="sessionId">Scheduled session</label><select id="sessionId" required><option value="">Loading your department's sessions…</option></select></div>
+      <div class="field"><label for="changeReason">Reason</label><textarea id="changeReason" rows="3" maxlength="500" placeholder="Why should this session be removed?" required></textarea></div>
+      <button class="btn primary" id="requestChange">Request change</button><div id="cout" style="margin-top:12px"></div></div>
+      <div class="panel" id="detail"><p class="sub">Your requests and their status appear on the right.</p></div>`;
+    const sessionPicker = document.getElementById("sessionId");
+    try {
+      const result = await CIT.api("changes/sessions.php");
+      sessionPicker.innerHTML = result.sessions.length
+        ? `<option value="">Choose a session</option>${result.sessions.map(s => `<option value="${esc(s.session_id)}">${esc(s.session_id)} · ${esc(s.title)} · ${esc(s.day)} P${s.start_period}–P${+s.start_period + +s.duration - 1} · ${esc(s.room_id)}</option>`).join("")}`
+        : `<option value="">No scheduled sessions in your department</option>`;
+    } catch (err) {
+      sessionPicker.innerHTML = `<option value="">Could not load department sessions</option>`;
+      document.getElementById("cout").innerHTML = CIT.errorHtml(err);
+    }
+    document.getElementById("requestChange").onclick = async ev => {
+      const out = document.getElementById("cout");
+      const session_id = document.getElementById("sessionId").value;
+      const reason = document.getElementById("changeReason").value.trim();
+      if (!session_id || !reason) { out.innerHTML = `<div class="callout bad">Enter a session ID and a reason.</div>`; return; }
+      try {
+        const r = await CIT.busy(ev.currentTarget, "Preparing proposal", () => CIT.api("changes/request.php", { session_id, reason }));
+        out.innerHTML = r.status === "pending"
+          ? `<div class="callout ok">Request sent for Admin review. ${r.summary.sessions_moved} session(s) would move.</div>`
+          : `<div class="callout bad">No valid timetable fits this request. An Admin can review the details.</div>`;
+        await list();
+        if (r.proposal_id) show(r.proposal_id);
       } catch (e) { out.innerHTML = CIT.errorHtml(e); }
     };
   } else {

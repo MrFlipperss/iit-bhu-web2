@@ -1,15 +1,17 @@
-// Spectra-week requests: queue, filters, detail with the decision and its reason; Admin review.  [M2]
+// Spectra-week requests: queue, filters, detail with the decision and its reason; Admin/department review.  [M2]
 (async () => {
   const user = await CIT.boot("bookings");
   if (!user) return;
   const main = document.getElementById("main");
   const isAdmin = user.role === "admin";
+  const isCoordinator = user.role === "department_coordinator";
+  const canReview = isAdmin || isCoordinator;
   const filters = [["", "All"], ["to_review", "To review"], ["approved", "Approved"], ["alternative_offered", "Alternatives"], ["rejected", "Rejected"], ["cancelled", "Cancelled"]];
   let status = qs.get("status") || "";
   main.innerHTML = `<div class="page-head"><div><h1>Spectra bookings</h1>
-      <div class="sub">Week 7. Decided in priority order: institute events, guest lectures, department events, club events; earlier requests win ties.</div></div>
+      <div class="sub">Week 7. ${isCoordinator ? `Showing requests for ${esc(user.department || "your department")}; you cannot review your own requests.` : "Decided in priority order: institute events, guest lectures, department events, club events; earlier requests win ties."}</div></div>
     <div class="actions"><a class="btn primary" href="request.html">${icon("plus")} New request</a></div></div>
-    <div class="actions" style="margin-bottom:12px"><div class="seg" id="f">${filters.filter(f => isAdmin || f[0] !== "to_review").map(([k, l]) => `<button data-s="${k}">${l}</button>`).join("")}</div>
+    <div class="actions" style="margin-bottom:12px"><div class="seg" id="f">${filters.filter(f => canReview || f[0] !== "to_review").map(([k, l]) => `<button data-s="${k}">${l}</button>`).join("")}</div>
       <input type="search" id="q" placeholder="Search" style="max-width:240px"></div>
     <div class="panel" style="padding:0"><div class="table-wrap" id="list"><div class="loading" style="padding:20px"><span class="spin"></span> Loading</div></div></div>`;
   document.querySelectorAll("#f button").forEach(b => (b.onclick = () => { status = b.dataset.s; load(); }));
@@ -36,14 +38,14 @@
       return matchesStatus && searchable;
     });
     if (!rows.length) { document.getElementById("list").innerHTML = `<div class="empty">No requests here.</div>`; return; }
-    document.getElementById("list").innerHTML = `<table><tr><th>ID</th><th>Request</th><th>Category</th><th>Asked for</th><th>Decision</th><th>Room and time</th>${isAdmin ? "<th>Review</th>" : ""}</tr>
+    document.getElementById("list").innerHTML = `<table><tr><th>ID</th><th>Request</th><th>Category</th><th>Asked for</th><th>Decision</th><th>Room and time</th>${canReview ? "<th>Review</th>" : ""}</tr>
       ${rows.map(r => `<tr class="clickable" data-id="${esc(r.id)}"><td class="mono">${esc(r.id)}</td>
         <td><div>${esc(r.title)}</div><div class="muted" style="font-size:12px">${esc(r.requester)} · ${r.attendance} people${r.series_id ? ` · series <span class="mono">${esc(r.series_id)}</span>` : ""}</div></td>
         <td>${words(r.effective_category || r.requested_category)}${r.effective_category && r.effective_category !== r.requested_category ? `<div class="muted" style="font-size:12px">asked: ${words(r.requested_category)}</div>` : ""}</td>
         <td class="mono" style="font-size:12px">${esc(r.windows)}</td>
         <td>${r.state === "cancelled" ? statusTag("cancelled") : r.status ? statusTag(r.status) : statusTag("pending", "Waiting for timetable")}</td>
         <td>${r.room_id ? `<span class="mono">${esc(r.room_id)}</span> ${slot(r.day, r.start_period, r.end_period)}` : ""}</td>
-        ${isAdmin ? `<td>${r.review_state ? statusTag(r.review_state) : ""}</td>` : ""}</tr>`).join("")}</table>`;
+        ${canReview ? `<td>${r.review_state ? statusTag(r.review_state) : ""}</td>` : ""}</tr>`).join("")}</table>`;
     document.querySelectorAll("#list tr[data-id]").forEach(tr => (tr.onclick = () => open(tr.dataset.id)));
   }
 
@@ -54,7 +56,7 @@
     const d = r.decision;
     const capped = d && d.effective_category !== r.requested_category;
     const notes = d?.alternatives?.notes || [];
-    const canReview = isAdmin && d && r.state !== "cancelled" && !r.is_mine;
+    const canActOnDecision = canReview && d && r.state !== "cancelled" && r.can_review;
     const dr = CIT.openDrawer(`<div class="drawer-head"><div><div class="mono sub">${esc(r.id)}${r.source === "app" ? " · made in the app" : ""}</div>
         <h2 style="margin:2px 0 0">${esc(r.title)}</h2></div><button class="btn ghost small" data-close aria-label="Close">${icon("x")}</button></div>
       ${d ? `<div class="callout ${d.status === "approved" ? "ok" : d.status === "rejected" ? "bad" : "warn"}">${statusTag(d.status)}
@@ -73,9 +75,9 @@
         ${d?.review_state && d.review_state !== "proposed" ? `<dt>Review</dt><dd>${statusTag(d.review_state)} ${esc(d.reviewed_by_name || "")}</dd>` : ""}</dl>
       ${r.history.length ? `<h3 style="margin-top:16px">History</h3><table>${r.history.map(h => `<tr><td class="muted">${when(h.created_at)}</td><td>${esc(h.action)}</td><td>${esc(h.display_name || "engine")}</td><td class="sub">${esc(h.comment || "")}</td></tr>`).join("")}</table>` : ""}
       <div class="actions" style="margin-top:20px">
-        ${canReview && d.review_state === "proposed" ? `<button class="btn primary" id="confirm">${icon("check")} Confirm</button>` : ""}
-        ${canReview && d.status !== "rejected" ? `<button class="btn danger" id="reject">Reject</button>` : ""}
-        ${isAdmin && r.is_mine ? `<span class="muted">This is your own request, so another Admin reviews it.</span>` : ""}
+        ${canActOnDecision && d.review_state === "proposed" ? `<button class="btn primary" id="confirm">${icon("check")} Confirm</button>` : ""}
+        ${canActOnDecision && d.status !== "rejected" ? `<button class="btn danger" id="reject">Reject</button>` : ""}
+        ${canReview && r.is_mine && !r.can_review ? `<span class="muted">This is your own request, so another authorized reviewer must handle it.</span>` : ""}
         ${r.is_mine && r.state !== "cancelled" ? `<button class="btn" id="cancel">Cancel request</button>` : ""}
       </div><div id="act"></div>`);
     dr.querySelector("#confirm")?.addEventListener("click", ev => act(ev.currentTarget, "bookings/review.php", { id, action: "confirm" }, "Confirmed"));

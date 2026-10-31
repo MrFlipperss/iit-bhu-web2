@@ -2,7 +2,7 @@
 
 ## Who can do what
 - **Admin (Dean's office, Spectra core team):** generates the timetable and exam plan, reviews Spectra booking decisions, uploads change files (faculty leave, room closures, added or removed sessions) and approves or rejects the proposed repairs. An Admin can never approve or reject their own request; another Admin must review it.
-- **Department coordinator:** submits department events and sees their own requests.
+- **Department coordinator:** submits department events, reviews booking requests assigned to their department, and may request changes to department sessions. Coordinators cannot review requests from another department or their own requests; schedule changes take effect only after an Admin approves the proposal.
 - **Faculty:** submits guest lectures and reports times they cannot teach. Those reports become a proposal that an Admin must approve.
 - **Club representative:** submits club events and sees their own requests.
 

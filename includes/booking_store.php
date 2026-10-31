@@ -109,10 +109,35 @@ function cit_request_row(PDO $db, string $id): array
     return $r;
 }
 
+/** Coordinators may see and review booking requests assigned to their department. */
+function cit_can_review_request(array $user, array $request): bool
+{
+    return $user['role'] === 'admin'
+        || ($user['role'] === 'department_coordinator'
+            && !empty($user['department'])
+            && ($request['department'] ?? null) === $user['department']);
+}
+
+function cit_can_view_request(array $user, array $request): bool
+{
+    return cit_can_review_request($user, $request) || cit_owns_request($user, $request);
+}
+
+function cit_can_review_decision(array $user, array $request): bool
+{
+    if (!cit_can_review_request($user, $request)) return false;
+    if ($user['role'] === 'admin') return !cit_owns_request($user, $request);
+    // Dataset requests use a shared department requester name; only block a
+    // coordinator from reviewing an app request they personally submitted.
+    return $user['role'] !== 'department_coordinator'
+        || !isset($request['created_by'])
+        || (int)$request['created_by'] !== (int)$user['id'];
+}
+
 function cit_request_detail(PDO $db, string $id, array $user): array
 {
     $r = cit_request_row($db, $id);
-    if ($user['role'] !== 'admin' && !cit_owns_request($user, $r)) cit_fail('forbidden', 'You can only see your own requests', 403);
+    if (!cit_can_view_request($user, $r)) cit_fail('forbidden', 'You can only see your own requests or requests for your department', 403);
     $st = $db->prepare('SELECT day, from_period, to_period FROM booking_request_windows WHERE request_id = ? ORDER BY ordinal');
     $st->execute([$id]);
     $r['windows'] = $st->fetchAll();
@@ -134,6 +159,7 @@ function cit_request_detail(PDO $db, string $id, array $user): array
     $st->execute(['booking_request', 'booking_decision', $id]);
     $r['history'] = $st->fetchAll();
     $r['is_mine'] = cit_owns_request($user, $r);
+    $r['can_review'] = cit_can_review_decision($user, $r);
     return $r;
 }
 
@@ -163,13 +189,16 @@ function cit_cancel_request(PDO $db, array $user, string $id, ?string $note): vo
     }
 }
 
-/** Admin review of an engine decision: confirm it, or reject it with a reason. Never on one's own request. */
-function cit_review_decision(PDO $db, array $admin, string $requestId, string $action, ?string $reason): array
+/** Admin or matching department coordinator review of an engine decision. Never on one's own request. */
+function cit_review_decision(PDO $db, array $reviewer, string $requestId, string $action, ?string $reason): array
 {
     $active = cit_require_active($db);
     $r = cit_request_row($db, $requestId);
-    if (cit_owns_request($admin, $r)) {
-        cit_fail('self_approval', 'You cannot approve or reject your own request. Another Admin has to review it.', 403);
+    if (!cit_can_review_request($reviewer, $r)) {
+        cit_fail('forbidden', 'You can review only requests for your department', 403);
+    }
+    if (!cit_can_review_decision($reviewer, $r)) {
+        cit_fail('self_approval', 'You cannot approve or reject your own request. Another authorized reviewer has to review it.', 403);
     }
     $st = $db->prepare('SELECT * FROM booking_decisions WHERE schedule_version_id = ? AND request_id = ?');
     $st->execute([$active['id'], $requestId]);
@@ -177,19 +206,19 @@ function cit_review_decision(PDO $db, array $admin, string $requestId, string $a
     if (!$d) cit_fail('not_found', 'There is no decision for this request yet', 404);
     if ($action === 'confirm') {
         $db->prepare("UPDATE booking_decisions SET review_state = 'confirmed', reviewed_by = ?, reviewed_at = UTC_TIMESTAMP() WHERE id = ?")
-           ->execute([$admin['id'], $d['id']]);
-        cit_approval('booking_decision', $requestId, 'confirmed', (int)$admin['id']);
-        cit_audit((int)$admin['id'], 'booking.confirm', 'booking_request', $requestId, ['status' => $d['status']]);
+           ->execute([$reviewer['id'], $d['id']]);
+        cit_approval('booking_decision', $requestId, 'confirmed', (int)$reviewer['id']);
+        cit_audit((int)$reviewer['id'], 'booking.confirm', 'booking_request', $requestId, ['status' => $d['status']]);
     } elseif ($action === 'reject') {
         if (!$reason) cit_fail('missing_field', 'Give a reason for the rejection');
         $db->prepare("UPDATE booking_decisions SET status = 'rejected', day = NULL, start_period = NULL, end_period = NULL, room_id = NULL,
                       reason = ?, review_state = 'overridden', reviewed_by = ?, reviewed_at = UTC_TIMESTAMP() WHERE id = ?")
-           ->execute(['Rejected by Admin: ' . $reason, $admin['id'], $d['id']]);
-        cit_approval('booking_decision', $requestId, 'rejected', (int)$admin['id'], $reason);
-        cit_audit((int)$admin['id'], 'booking.reject', 'booking_request', $requestId, ['reason' => $reason]);
-        cit_recompute_bookings($db, (int)$active['id'], (int)$admin['id']);   // the freed room goes to the next request
+           ->execute(['Rejected by ' . $reviewer['display_name'] . ': ' . $reason, $reviewer['id'], $d['id']]);
+        cit_approval('booking_decision', $requestId, 'rejected', (int)$reviewer['id'], $reason);
+        cit_audit((int)$reviewer['id'], 'booking.reject', 'booking_request', $requestId, ['reason' => $reason]);
+        cit_recompute_bookings($db, (int)$active['id'], (int)$reviewer['id']);   // the freed room goes to the next request
     } else {
         cit_fail('bad_field', 'action must be confirm or reject');
     }
-    return cit_request_detail($db, $requestId, $admin);
+    return cit_request_detail($db, $requestId, $reviewer);
 }

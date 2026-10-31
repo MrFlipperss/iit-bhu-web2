@@ -77,7 +77,7 @@ const CIT = {
       ["bookings", "Spectra bookings", "bookings.html", "inbox"],
       ["request", "New request", "request.html", "plus"],
       ["assistant", "Assistant", "assistant.html", "chat"],
-      ["reschedule", u.role === "faculty" ? "Report unavailability" : "Reschedule", "reschedule.html", "shuffle", ["admin", "faculty"]],
+      ["reschedule", u.role === "faculty" ? "Report unavailability" : u.role === "department_coordinator" ? "Department changes" : "Reschedule", "reschedule.html", "shuffle", ["admin", "faculty", "department_coordinator"]],
       ["admin", "Admin", "admin.html", "settings", ["admin"]],
     ];
     const nav = items.filter(i => !i[4] || i[4].includes(u.role))

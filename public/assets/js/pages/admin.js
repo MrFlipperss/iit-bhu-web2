@@ -46,11 +46,17 @@
     try { await CIT.busy(b, "Activating", () => CIT.api("schedule/versions.php", { version_id: +b.dataset.activate })); location.reload(); } catch (e) { CIT.toast(e.message, true); }
   }));
   document.getElementById("saveExports").onclick = async ev => {
-    await CIT.busy(ev.currentTarget, "Saving", async () => {
-      await fetch("/api/schedule/export.php?save=1", { credentials: "same-origin" });
-      if (lastRepair) await fetch(`/api/schedule/export.php?kind=after&version=${lastRepair.id}&save=1`, { credentials: "same-origin" });
-    });
-    CIT.toast("Saved to exports/ on the server");
+    let scheduleSaved = false;
+    try {
+      await CIT.busy(ev.currentTarget, "Saving", async () => {
+        await CIT.api("schedule/export.php", { kind: "schedule" });
+        scheduleSaved = true;
+        if (lastRepair) await CIT.api("schedule/export.php", { kind: "after", version: +lastRepair.id });
+      });
+      CIT.toast(lastRepair ? "Both exports saved on the server" : "schedule.json saved on the server");
+    } catch (err) {
+      CIT.toast(scheduleSaved ? `schedule.json was saved, but the repair export failed: ${err.message}` : err.message, true);
+    }
   };
   document.getElementById("settings").onsubmit = async e => {
     e.preventDefault();

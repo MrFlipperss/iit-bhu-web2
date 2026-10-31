@@ -70,7 +70,8 @@ module zips contain the same file. Install them in this order:
 | `POST /api/schedule/generate.php` | Admin | `{improve?: bool}` | `{version_id, activated, hard_violations, soft_total, soft_penalties, bookings, seconds}` |
 | `GET /api/schedule/get.php?view=group\|faculty\|room&id=..&week=regular\|fest` | any | | `{version, entries[], events[], closures[], unavailable[]}` |
 | `GET /api/schedule/versions.php` / `POST {version_id}` | any / Admin | | list / activate (only with 0 hard violations) |
-| `GET /api/schedule/export.php?kind=schedule\|after&version=&save=1` | any | | the JSON file |
+| `GET /api/schedule/export.php?kind=schedule\|after&version=` | any | | downloads the JSON file |
+| `POST /api/schedule/export.php` | Admin | `{kind: schedule\|after, version?}` | saves the export in `exports/` (CSRF protected) |
 | `GET\|POST /api/schedule/validate.php` | any / Admin | | latest or new validator report |
 | `GET /api/schedule/explain.php?session_id=\|request_id=` | any | | `{text, grid[], rooms_that_fit}` |
 
@@ -109,7 +110,9 @@ module zips contain the same file. Install them in this order:
 | `GET /api/bookings/get.php?id=` | owner / Admin | | request, windows, decision, history |
 | `POST /api/bookings/create.php` | any | `{title, attendance, duration_periods, requested_category, windows[{day,from_period,to_period}], room_types[], needs[], requested_room?, mandatory_for_groups[], repeat?, raw_text?}` | `{request_ids[], decisions[]}` |
 | `POST /api/bookings/cancel.php` | owner / Admin | `{id, note?}` | request |
-| `POST /api/bookings/review.php` | Admin, never on own request | `{id, action: confirm\|reject, reason?}` | request |
+| `POST /api/bookings/review.php` | Admin or matching department coordinator, never on own request | `{id, action: confirm\|reject, reason?}` | request |
+| `GET /api/changes/sessions.php` | Department coordinator | | currently scheduled sessions in their department |
+| `POST /api/changes/request.php` | Faculty / department coordinator | faculty `{text, preview?: bool, changes?: [...]}`; coordinator `{session_id, reason}` | pending repair proposal for Admin review |
 | `GET /api/bookings/availability.php?day&from&to&attendance&types&needs` | any | | rooms with fits / free / taken_by |
 | `GET /api/exams/get.php?group=` | any | | exams with rooms and seats |
 
