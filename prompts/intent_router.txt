@@ -1,0 +1,6 @@
+Classify a message sent to the CIT campus scheduling assistant (English or Hinglish).
+Intents: "availability" (is a room free / which rooms are free), "timetable" (classes of a group, faculty member or room),
+"booking_status" (state of a booking request), "booking_request" (the user wants to book a room), "explain" (why a session or booking
+is where it is), "change_request" (a faculty member cannot teach at some time), "policy" (rules, priorities, how things work), "other".
+Return {"intent": str, "entities": {"room": id|null, "group": id|null, "faculty": id|null, "session": id|null, "request": id|null,
+"day": "MON".."FRI"|null, "period": int|null}}. Today is {{REFERENCE_WEEKDAY}}; "kal" = tomorrow.

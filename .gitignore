@@ -1,6 +1,8 @@
 .env
 .firebaserc
 .firebase/
+.venv/
+node_modules/
 tmp/
 **/__pycache__/
 *.log

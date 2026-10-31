@@ -24,9 +24,20 @@
     let d;
     try { d = await CIT.api(`bookings/list.php?status=${status}${q ? "&q=" + encodeURIComponent(q) : ""}`); }
     catch (e) { document.getElementById("list").innerHTML = CIT.errorHtml(e); return; }
-    if (!d.requests.length) { document.getElementById("list").innerHTML = `<div class="empty">No requests here.</div>`; return; }
+    // Keep the visible list filtered even if a cached or older API response
+    // ignores the query parameters. The API applies the same filters server-side.
+    const needle = q.toLocaleLowerCase();
+    const rows = (Array.isArray(d?.requests) ? d.requests : []).filter(r => {
+      const matchesStatus = !status
+        || (status === "to_review" && r.review_state === "proposed")
+        || (status === "cancelled" && r.state === "cancelled")
+        || (["approved", "rejected", "alternative_offered"].includes(status) && r.status === status);
+      const searchable = [r.id, r.title, r.requester].some(value => String(value ?? "").toLocaleLowerCase().includes(needle));
+      return matchesStatus && searchable;
+    });
+    if (!rows.length) { document.getElementById("list").innerHTML = `<div class="empty">No requests here.</div>`; return; }
     document.getElementById("list").innerHTML = `<table><tr><th>ID</th><th>Request</th><th>Category</th><th>Asked for</th><th>Decision</th><th>Room and time</th>${isAdmin ? "<th>Review</th>" : ""}</tr>
-      ${d.requests.map(r => `<tr class="clickable" data-id="${esc(r.id)}"><td class="mono">${esc(r.id)}</td>
+      ${rows.map(r => `<tr class="clickable" data-id="${esc(r.id)}"><td class="mono">${esc(r.id)}</td>
         <td><div>${esc(r.title)}</div><div class="muted" style="font-size:12px">${esc(r.requester)} · ${r.attendance} people${r.series_id ? ` · series <span class="mono">${esc(r.series_id)}</span>` : ""}</div></td>
         <td>${words(r.effective_category || r.requested_category)}${r.effective_category && r.effective_category !== r.requested_category ? `<div class="muted" style="font-size:12px">asked: ${words(r.requested_category)}</div>` : ""}</td>
         <td class="mono" style="font-size:12px">${esc(r.windows)}</td>
