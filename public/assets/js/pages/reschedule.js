@@ -86,13 +86,15 @@
       const out = document.getElementById("cout");
       try {
         const p = await CIT.busy(ev.currentTarget, "Reading", () => CIT.api("changes/request.php", { text: document.getElementById("ctext").value.trim(), preview: true }));
-        if (!p.changes.length) { out.innerHTML = `<div class="callout warn">${esc(p.follow_up || "I could not find a day in that.")}</div>`; return; }
-        out.innerHTML = `<div class="callout">You, <span class="mono">${esc(user.faculty_id)}</span>, would be unavailable:<ul>${p.changes.map(c => `<li>${c.days.map(d => slot(d, c.periods[0], c.periods[c.periods.length - 1])).join(", ")}</li>`).join("")}</ul>
-          ${p.assumptions.length ? `<div class="muted">${p.assumptions.map(esc).join("<br>")}</div>` : ""}</div><button class="btn primary" id="send">Send for approval</button>`;
+        if (!p.changes.length) { out.innerHTML = `<div class="callout bad"><b>Rejected:</b> ${esc(p.follow_up || "I could not find a day in that.")}</div>`; return; }
+        out.innerHTML = `<div class="callout ok">You, <span class="mono">${esc(user.faculty_id)}</span>, would be unavailable:<ul>${p.changes.map(c => `<li>${c.days.map(d => slot(d, c.periods[0], c.periods[c.periods.length - 1])).join(", ")}</li>`).join("")}</ul>
+          ${p.assumptions.length ? `<div class="sub" style="margin-top:6px">${p.assumptions.map(esc).join("<br>")}</div>` : ""}</div><button class="btn primary" id="send">Send for approval</button>`;
         document.getElementById("send").onclick = async e2 => {
           try {
-            const r = await CIT.busy(e2.currentTarget, "Finding the smallest change", () => CIT.api("changes/request.php", { text: document.getElementById("ctext").value.trim(), changes: p.changes }));
-            out.innerHTML = r.status === "pending" ? `<div class="callout ok">Sent. ${r.summary.sessions_moved} of your sessions would move. An Admin will review it.</div>` : `<div class="callout bad">No valid timetable fits that. An Admin can see the details.</div>`;
+            const r = await CIT.busy(e2.currentTarget, "Checking clashes & finding minimal moves", () => CIT.api("changes/request.php", { text: document.getElementById("ctext").value.trim(), changes: p.changes }));
+            out.innerHTML = r.status === "pending"
+              ? `<div class="callout ok"><b>Sent for Approval:</b> ${r.summary.sessions_moved} session(s) can be cleanly moved without clashes. Sent to Dean for approval.</div>`
+              : `<div class="callout bad"><b>Rejected:</b> ${esc(r.reason || "Clashes with existing timetable. No conflict-free slot exists.")}</div>`;
             list();
           } catch (err) { out.innerHTML = CIT.errorHtml(err); }
         };

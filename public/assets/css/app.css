@@ -140,6 +140,15 @@ tr.changed td { background: #fbf8ef; }
 .status.rejected::before, .status.infeasible::before, .status.bad::before { background: var(--bad); }
 .status.cancelled::before, .status.superseded::before, .status.stale::before { background: var(--text-3); }
 
+/* category & status tags */
+.tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-size: 11.5px; font-weight: 500; font-family: var(--font); border: 1px solid transparent; white-space: nowrap; }
+.tag.warn { background: var(--warn-soft); color: #855307; border-color: rgba(154, 106, 18, .25); }
+.tag.danger, .tag.bad { background: var(--bad-soft); color: #9c2718; border-color: rgba(176, 65, 46, .25); }
+.tag.ok, .tag.success { background: var(--ok-soft); color: #1e663a; border-color: rgba(47, 125, 79, .25); }
+.tag.info, .tag.primary { background: #eef2fa; color: #1b4992; border-color: rgba(43, 90, 163, .25); }
+.tag.accent { background: #f3eafa; color: #58217e; border-color: rgba(109, 40, 158, .25); }
+.tag.muted { background: var(--surface-2); color: var(--text-3); border-color: var(--line); }
+
 .callout { border-radius: var(--r); padding: 10px 12px; font-size: 13px; margin-bottom: 12px; border: 1px solid var(--line); background: var(--surface-2); }
 .callout.warn { background: var(--warn-soft); border-color: rgba(154, 106, 18, .2); }
 .callout.bad { background: var(--bad-soft); border-color: rgba(176, 65, 46, .2); }

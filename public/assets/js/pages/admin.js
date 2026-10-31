@@ -23,8 +23,12 @@
         <div class="actions"><a class="btn primary" href="/exports/schedule.json" download="schedule.json">${icon("download")} schedule.json</a>
           ${lastRepair ? `<a class="btn" href="/exports/schedule_after.json" download="schedule_after.json">${icon("download")} schedule_after.json</a>` : `<span class="muted">schedule_after.json appears after a repair is approved</span>`}
           <button class="btn ghost" id="saveExports">Also save on the server</button></div></div>
-      <div class="panel"><h2>Requests Pending Dean's Approval</h2>
-        <p class="sub">All Spectra room bookings and timetable changes submitted by non-admin users require Dean approval before affecting the live timetable.</p>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Requests Pending Dean's Approval</h2>
+          <button type="button" class="btn small ghost" id="refresh-approvals">${icon("refresh")} Live Sync</button>
+        </div>
+        <p class="sub">All Spectra room bookings and faculty timetable reschedules submitted across any device appear here in real-time for Dean approval.</p>
         <div id="approvals-list"><div class="loading"><span class="spin"></span> Loading requests</div></div>
       </div>
       <div class="panel"><h2>Manual Admin Override</h2>
@@ -100,40 +104,83 @@
 
   async function loadPendingApprovals() {
     const el = document.getElementById("approvals-list");
+    if (!el) return;
     try {
       const res = await CIT.api("admin/pending_approvals.php");
       const list = res.requests || [];
       if (!list.length) {
-        el.innerHTML = `<p class="muted" style="font-size:13px">No pending user requests waiting for approval.</p>`;
+        el.innerHTML = `<p class="muted" style="font-size:13px">No pending user requests waiting for approval. (Synced with Cloud)</p>`;
         return;
       }
       el.innerHTML = `<table>
-        <tr><th>ID</th><th>Request</th><th>Requester</th><th>Details</th><th>Actions</th></tr>
-        ${list.map(r => `<tr>
+        <tr><th>ID</th><th>Type</th><th>Request</th><th>Requester</th><th>Details</th><th>Actions</th></tr>
+        ${list.map(r => {
+          const cat = (r.category || r.requested_category || "").toLowerCase();
+          const title = (r.title || "").toLowerCase();
+          const id = (r.id || "").toUpperCase();
+          let typeLabel = "Room Booking";
+          let tagClass = "info";
+          if (cat.includes("faculty") || cat.includes("leave") || title.includes("faculty leave") || id.startsWith("CR-")) {
+            typeLabel = "Faculty Leave";
+            tagClass = "warn";
+          } else if (cat.includes("repair") || cat.includes("closure") || cat.includes("disruption") || id.startsWith("PR-")) {
+            typeLabel = "Campus Repair";
+            tagClass = "danger";
+          } else if (cat.includes("dept") || cat.includes("department") || title.includes("class") || title.includes("eee")) {
+            typeLabel = "Department Event";
+            tagClass = "accent";
+          } else if (cat.includes("guest") || title.includes("guest")) {
+            typeLabel = "Guest Lecture";
+            tagClass = "info";
+          } else if (cat.includes("club") || cat.includes("spectra") || title.includes("quiz")) {
+            typeLabel = "Club / Fest Event";
+            tagClass = "success";
+          } else if (r.type === "reschedule") {
+            typeLabel = "Faculty Reschedule";
+            tagClass = "warn";
+          }
+          return `<tr>
           <td class="mono"><b>${esc(r.id)}</b></td>
-          <td><div><b>${esc(r.title)}</b></div><span class="sub">${esc(r.category || r.requested_category)}</span></td>
+          <td><span class="tag ${tagClass}">${esc(typeLabel)}</span></td>
+          <td><div><b>${esc(r.title)}</b></div><span class="sub">${esc(r.category || r.requested_category || typeLabel)}</span></td>
           <td>${esc(r.requester)}</td>
-          <td class="sub">${esc(r.room_id || r.requested_room || 'Any Room')} · ${esc(r.day || 'THU')} P${r.start_period || 10}-P${r.end_period || 12}</td>
+          <td class="sub">
+            <b>${esc(r.room_id || r.requested_room || 'Any Room')}</b> · ${esc(r.day || 'THU')} P${r.start_period || 10}-P${r.end_period || 12}
+            ${r.details ? `<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(r.details)}</div>` : ''}
+          </td>
           <td>
             <div class="actions" style="margin:0">
-              <button class="btn small primary" data-approve="${esc(r.id)}">Approve</button>
-              <button class="btn small danger" data-reject="${esc(r.id)}">Reject</button>
+              <button class="btn small primary" data-approve="${esc(r.id)}" data-day="${esc(r.day || '')}" data-room="${esc(r.room_id || '')}" data-start="${esc(r.start_period || '')}" data-end="${esc(r.end_period || '')}" data-prop="${esc(r.proposal_id || '')}">Approve</button>
+              <button class="btn small danger" data-reject="${esc(r.id)}" data-prop="${esc(r.proposal_id || '')}">Reject</button>
             </div>
           </td>
-        </tr>`).join("")}
+        </tr>`;
+        }).join("")}
       </table>`;
 
       el.querySelectorAll("[data-approve]").forEach(btn => {
         btn.onclick = async () => {
-          await CIT.api("admin/decide_approval.php", { id: btn.dataset.approve, action: "approve" });
-          CIT.toast("Request approved and applied to the live timetable!");
+          await CIT.api("admin/decide_approval.php", {
+            id: btn.dataset.approve,
+            action: "approve",
+            day: btn.dataset.day,
+            room_id: btn.dataset.room,
+            start_period: btn.dataset.start,
+            end_period: btn.dataset.end,
+            proposal_id: btn.dataset.prop
+          });
+          CIT.toast("Request approved and applied to live timetable across all devices!");
           loadPendingApprovals();
         };
       });
 
       el.querySelectorAll("[data-reject]").forEach(btn => {
         btn.onclick = async () => {
-          await CIT.api("admin/decide_approval.php", { id: btn.dataset.reject, action: "reject" });
+          await CIT.api("admin/decide_approval.php", {
+            id: btn.dataset.reject,
+            action: "reject",
+            proposal_id: btn.dataset.prop
+          });
           CIT.toast("Request rejected by Dean of Academics");
           loadPendingApprovals();
         };
@@ -144,6 +191,10 @@
   }
 
   loadPendingApprovals();
+  const refreshBtn = document.getElementById("refresh-approvals");
+  if (refreshBtn) refreshBtn.onclick = () => { CIT.toast("Refreshing requests from Cloud..."); loadPendingApprovals(); };
+  // Poll cloud pending approvals every 5 seconds so any request sent from another laptop appears live
+  setInterval(loadPendingApprovals, 5000);
 
   const scopeEl = document.getElementById("override-scope");
   const winFieldEl = document.getElementById("window-select-field");

@@ -24,14 +24,14 @@
   const c = s.decision_counts;
   const sp = v.soft_penalties || {};
   const softNote = Object.entries(sp).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(" · ") || "none";
-  const toReview = s.pending.filter(p => p.item_type === "booking_decision").length;
+  const toReview = s.pending.length;
   const strip = `<div class="strip">
     <div><div class="label">Hard violations</div><div class="figure ${v.hard_violation_count ? "bad" : "ok"}">${v.hard_violation_count ?? "–"}</div><div class="note">official validator</div></div>
     <div><div class="label">Soft penalty</div><div class="figure">${v.soft_total ?? "–"}</div><div class="note mono">${esc(softNote)}</div></div>
     <div><div class="label">Spectra requests</div><div class="figure">${(c.approved || 0)}<span class="muted" style="font-size:14px"> approved</span></div>
       <div class="note">${plural(c.alternative_offered || 0, "alternative")} · ${c.rejected || 0} rejected · score ${v.booking_score ?? "–"}</div></div>
     <div><div class="label">Midsem plan</div><div class="figure">${v.exam_soft_penalty ?? "–"}</div><div class="note">same-day exam penalty</div></div>
-    ${isAdmin ? `<div><div class="label">Waiting for review</div><div class="figure">${toReview + s.proposals_pending}</div><div class="note">${plural(toReview, "booking")} · ${plural(s.proposals_pending, "repair")}</div></div>` : ""}
+    ${isAdmin ? `<div><div class="label">Waiting for review</div><div class="figure">${toReview}</div><div class="note">${plural(s.pending.filter(p => !p.item_type.includes("repair") && !p.item_type.includes("leave")).length, "booking")} · ${plural(s.pending.filter(p => p.item_type.includes("repair") || p.item_type.includes("leave")).length, "repair/leave")}</div></div>` : ""}
   </div>`;
 
   const violations = v.violations && v.violations.length
@@ -41,9 +41,11 @@
   const invHtml = inv.length ? `<div class="callout warn">Priority inversions (a lower-priority request holds a room a rejected one could use):<ul>${inv.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>` : "";
 
   const pendingRows = s.pending.map(p => {
-    const isBooking = p.item_type === "booking_decision";
-    const href = isBooking ? `admin.html#approvals-list` : p.item_type === "reschedule_proposal" ? `reschedule.html?id=${p.item_id}` : "reschedule.html";
-    return `<tr><td><span class="tag ${isBooking ? 'info' : 'warn'}">${isBooking ? "Spectra Booking" : "Campus Repair"}</span></td>
+    const isBooking = p.item_type !== "reschedule_proposal" && p.item_type !== "campus_repair";
+    const href = isBooking ? `admin.html#approvals-list` : p.item_id ? `reschedule.html?id=${p.item_id}` : "reschedule.html";
+    const catLabel = p.category_label || (isBooking ? "Room Booking" : "Campus Repair");
+    const tagCls = p.tag_class || (isBooking ? "info" : "warn");
+    return `<tr><td><span class="tag ${tagCls}">${esc(catLabel)}</span></td>
       <td class="mono"><b>${esc(p.ref || p.item_id)}</b></td><td>${esc(p.summary)}</td>
       <td><a class="btn small" href="${href}">Review</a></td></tr>`;
   }).join("");

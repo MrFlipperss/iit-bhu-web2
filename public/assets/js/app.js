@@ -90,7 +90,396 @@ const CIT = {
         }
       }
     }
+    // Merge cloud approved bookings if present so all devices stay in sync
+    if (CIT.scheduleCache && CIT.cloud) {
+      try {
+        const cloudBookings = await CIT.cloud.getApprovedUpdates();
+        if (cloudBookings && cloudBookings.length > 0) {
+          CIT.scheduleCache.fest_week = CIT.scheduleCache.fest_week || { bookings: [], session_overrides: [] };
+          cloudBookings.forEach(cb => {
+            if (!CIT.scheduleCache.fest_week.bookings.some(b => b.request_id === cb.request_id)) {
+              CIT.scheduleCache.fest_week.bookings.unshift(cb);
+            }
+          });
+        }
+      } catch (e) { }
+    }
     return CIT.scheduleCache || {};
+  },
+
+  cloud: {
+    baseUrl: "https://firestore.googleapis.com/v1/projects/web-hackathon-b7b1a/databases/(default)/documents",
+
+    toFirestore(obj) {
+      const fields = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (v === null || v === undefined) fields[k] = { nullValue: null };
+        else if (typeof v === "string") fields[k] = { stringValue: v };
+        else if (typeof v === "number") fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+        else if (typeof v === "boolean") fields[k] = { booleanValue: v };
+        else if (Array.isArray(v)) {
+          fields[k] = {
+            arrayValue: {
+              values: v.map(item => (typeof item === "object" && item !== null) ? { mapValue: { fields: CIT.cloud.toFirestore(item) } } : { stringValue: String(item) })
+            }
+          };
+        } else if (typeof v === "object") {
+          fields[k] = { mapValue: { fields: CIT.cloud.toFirestore(v) } };
+        }
+      }
+      return fields;
+    },
+
+    fromFirestore(fields) {
+      if (!fields) return {};
+      const res = {};
+      for (const [k, v] of Object.entries(fields)) {
+        if ("stringValue" in v) res[k] = v.stringValue;
+        else if ("integerValue" in v) res[k] = parseInt(v.integerValue, 10);
+        else if ("doubleValue" in v) res[k] = v.doubleValue;
+        else if ("booleanValue" in v) res[k] = v.booleanValue;
+        else if ("nullValue" in v) res[k] = null;
+        else if ("arrayValue" in v) {
+          res[k] = (v.arrayValue.values || []).map(item => "mapValue" in item ? CIT.cloud.fromFirestore(item.mapValue.fields) : ("stringValue" in item ? item.stringValue : ("integerValue" in item ? parseInt(item.integerValue, 10) : item)));
+        } else if ("mapValue" in v) {
+          res[k] = CIT.cloud.fromFirestore(v.mapValue.fields);
+        }
+      }
+      return res;
+    },
+
+    async getPendingApprovals() {
+      try {
+        const res = await fetch(`${CIT.cloud.baseUrl}/pending_approvals?pageSize=100`, { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.documents && Array.isArray(json.documents)) {
+            const list = json.documents.map(doc => {
+              const data = CIT.cloud.fromFirestore(doc.fields);
+              data._docName = doc.name;
+              return data;
+            });
+            localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(list));
+            return list;
+          }
+          return [];
+        }
+      } catch (err) {
+        console.warn("Firestore fetch pending error, using local fallback:", err);
+      }
+      return JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+    },
+
+    async savePendingApproval(record) {
+      let localList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+      localList = localList.filter(r => r.id !== record.id);
+      localList.unshift(record);
+      localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(localList));
+
+      try {
+        const docId = encodeURIComponent(record.id || ("REQ-" + Date.now()));
+        const payload = { fields: CIT.cloud.toFirestore(record) };
+        await fetch(`${CIT.cloud.baseUrl}/pending_approvals/${docId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.warn("Firestore save pending error:", err);
+      }
+    },
+
+    async removePendingApproval(id) {
+      let localList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+      localList = localList.filter(r => r.id !== id);
+      localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(localList));
+
+      try {
+        const docId = encodeURIComponent(id);
+        await fetch(`${CIT.cloud.baseUrl}/pending_approvals/${docId}`, {
+          method: "DELETE"
+        });
+      } catch (err) {
+        console.warn("Firestore remove pending error:", err);
+      }
+    },
+
+    async getApprovedUpdates() {
+      try {
+        const res = await fetch(`${CIT.cloud.baseUrl}/schedule_updates/fest_bookings`, { cache: "no-store" });
+        if (res.ok) {
+          const doc = await res.json();
+          const data = CIT.cloud.fromFirestore(doc.fields);
+          return data.bookings || [];
+        }
+      } catch (err) { }
+      return [];
+    },
+
+    async saveApprovedBooking(booking) {
+      try {
+        const current = await CIT.cloud.getApprovedUpdates();
+        current.unshift(booking);
+        const payload = {
+          fields: CIT.cloud.toFirestore({
+            updated_at: new Date().toISOString(),
+            bookings: current
+          })
+        };
+        await fetch(`${CIT.cloud.baseUrl}/schedule_updates/fest_bookings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (err) {
+        console.warn("Firestore save approved booking error:", err);
+      }
+    }
+  },
+
+  checkTimetableClash(req, schedule, dataset) {
+    const day = req.day;
+    const startP = +req.start_period;
+    const endP = +req.end_period;
+    const att = +(req.attendance || 0);
+    const groups = Array.isArray(req.mandatory_for_groups) ? req.mandatory_for_groups : [];
+    const rooms = dataset.rooms || [];
+    const allSessions = schedule.sessions || [];
+    const exams = schedule.exams || [];
+    const festBookings = (schedule.fest_week && schedule.fest_week.bookings) || [];
+    const closures = dataset.room_unavailability || [];
+
+    const overlaps = (sA, eA, sB, eB) => Math.max(sA, sB) <= Math.min(eA, eB);
+
+    // 1. Mandatory Student Groups Clash Check
+    if (groups.length > 0) {
+      for (const sess of allSessions) {
+        if (sess.day !== day) continue;
+        const meta = (dataset.sessions || []).find(s => s.id === sess.session_id);
+        const sessGroups = (meta && meta.groups) || [];
+        const clashingGroup = groups.find(g => sessGroups.includes(g));
+        if (clashingGroup) {
+          const dur = (meta && meta.duration) || 1;
+          const sStart = +sess.start_period;
+          const sEnd = sStart + dur - 1;
+          if (overlaps(startP, endP, sStart, sEnd)) {
+            return {
+              clash: true,
+              type: "group_clash",
+              reason: `Clashes with existing timetable: Student group ${clashingGroup} has mandatory class ${sess.session_id} (${meta?.course_id || ""}) on ${day} at Period ${sStart}${dur > 1 ? "-" + sEnd : ""}.`
+            };
+          }
+        }
+      }
+    }
+
+    // 2. Room Specific Clash Check
+    const checkSingleRoom = (targetRoomId) => {
+      const roomObj = rooms.find(r => r.id === targetRoomId);
+      if (roomObj && att > 0 && roomObj.capacity < att) {
+        return {
+          clash: true,
+          type: "capacity",
+          reason: `Capacity mismatch: Room ${targetRoomId} only has capacity ${roomObj.capacity}, but request requires ${att} seats.`
+        };
+      }
+
+      // Check teaching sessions
+      for (const sess of allSessions) {
+        if (sess.day === day && sess.room_id === targetRoomId) {
+          const meta = (dataset.sessions || []).find(s => s.id === sess.session_id);
+          const dur = (meta && meta.duration) || 1;
+          const sStart = +sess.start_period;
+          const sEnd = sStart + dur - 1;
+          if (overlaps(startP, endP, sStart, sEnd)) {
+            return {
+              clash: true,
+              type: "session_clash",
+              reason: `Clashes with existing timetable: Room ${targetRoomId} is already occupied by teaching session ${sess.session_id} (${meta?.course_id || ""}) on ${day} at Period ${sStart}${dur > 1 ? "-" + sEnd : ""}.`
+            };
+          }
+        }
+      }
+
+      // Check midsem exams
+      for (const ex of exams) {
+        if (ex.day === day && (ex.rooms || []).includes(targetRoomId)) {
+          const exStart = ex.session === "AM" ? 1 : 6;
+          const exEnd = ex.session === "AM" ? 4 : 9;
+          if (overlaps(startP, endP, exStart, exEnd)) {
+            return {
+              clash: true,
+              type: "exam_clash",
+              reason: `Clashes with existing timetable: Room ${targetRoomId} is reserved for Midsem Exam ${ex.exam_id} on ${day} during ${ex.session} slot (Periods ${exStart}-${exEnd}).`
+            };
+          }
+        }
+      }
+
+      // Check approved fest bookings
+      for (const fb of festBookings) {
+        if (fb.status === "approved" && fb.day === day && fb.room_id === targetRoomId) {
+          const bStart = +fb.start_period;
+          const bEnd = +fb.end_period;
+          if (overlaps(startP, endP, bStart, bEnd)) {
+            return {
+              clash: true,
+              type: "booking_clash",
+              reason: `Clashes with existing timetable: Room ${targetRoomId} is already booked for ${fb.request_id || "another event"} on ${day} during P${bStart}-P${bEnd}.`
+            };
+          }
+        }
+      }
+
+      // Check room unavailability
+      for (const unavail of closures) {
+        if (unavail.room_id === targetRoomId && unavail.day === day) {
+          const unavailPeriods = unavail.periods || [];
+          const hasOverlap = unavailPeriods.some(p => p >= startP && p <= endP);
+          if (hasOverlap) {
+            return {
+              clash: true,
+              type: "maintenance_clash",
+              reason: `Room ${targetRoomId} is unavailable/closed on ${day} (${unavail.reason || "Maintenance / Administrative closure"}).`
+            };
+          }
+        }
+      }
+
+      return { clash: false };
+    };
+
+    if (req.room_id) {
+      return checkSingleRoom(req.room_id);
+    }
+
+    // No room specified ("Any suitable room")
+    const eligibleRooms = rooms.filter(r => (r.capacity >= att) && (!r.allowed_uses || r.allowed_uses.includes("event")));
+    if (!eligibleRooms.length) {
+      return {
+        clash: true,
+        type: "no_rooms",
+        reason: `Rejected: No campus venue has sufficient capacity (${att} seats) for this event.`
+      };
+    }
+
+    for (const er of eligibleRooms) {
+      const res = checkSingleRoom(er.id);
+      if (!res.clash) {
+        return { clash: false, assigned_room: er.id };
+      }
+    }
+
+    return {
+      clash: true,
+      type: "all_rooms_clashing",
+      reason: `Rejected: Clashes with existing timetable. All eligible event rooms (${eligibleRooms.map(r => r.id).join(", ")}) are booked on ${day} during Period(s) P${startP}-P${endP}.`
+    };
+  },
+
+  checkFacultyReschedule(facultyId, days, periods, schedule, dataset) {
+    const allSessions = schedule.sessions || [];
+    const affected = [];
+
+    // 1. Identify all sessions of this faculty on these days and periods
+    for (const sess of allSessions) {
+      const meta = (dataset.sessions || []).find(s => s.id === sess.session_id);
+      const sessFac = sess.faculty_id || (meta && meta.faculty_id);
+      if (sessFac === facultyId && days.includes(sess.day)) {
+        const dur = (meta && meta.duration) || 1;
+        const sStart = +sess.start_period;
+        const sEnd = sStart + dur - 1;
+        const overlaps = periods.some(p => p >= sStart && p <= sEnd);
+        if (overlaps) {
+          affected.push({ sess, meta, dur, sStart, sEnd });
+        }
+      }
+    }
+
+    // If faculty has NO sessions in that slot: 0 clashes!
+    if (affected.length === 0) {
+      return {
+        canReschedule: true,
+        affectedCount: 0,
+        moves: [],
+        reason: "Faculty has no scheduled classes during this time window."
+      };
+    }
+
+    // 2. For each affected session, attempt to find a clash-free relocation slot
+    const proposedMoves = [];
+    const teachingDays = ["MON", "TUE", "WED", "THU", "FRI"];
+    const validPeriods = [1, 2, 3, 4, 6, 7, 8];
+
+    for (const aff of affected) {
+      let foundSlot = null;
+      const originalRoom = aff.sess.room_id;
+      const targetRooms = [originalRoom, "LH-2", "LH-3", "LH-1", "CR-101", "CR-102", "CS-LAB-1"];
+      const searchDays = [aff.sess.day, ...teachingDays.filter(d => d !== aff.sess.day)];
+
+      dayLoop:
+      for (const d of searchDays) {
+        for (const p of validPeriods) {
+          if (days.includes(d) && periods.includes(p)) continue;
+
+          for (const rm of targetRooms) {
+            const clashCheck = CIT.checkTimetableClash({
+              day: d,
+              start_period: p,
+              end_period: p + aff.dur - 1,
+              room_id: rm,
+              attendance: aff.meta?.size || 40,
+              mandatory_for_groups: aff.meta?.groups || []
+            }, schedule, dataset);
+
+            if (!clashCheck.clash) {
+              const facBusy = allSessions.some(other => {
+                if (other.session_id === aff.sess.session_id) return false;
+                const oMeta = (dataset.sessions || []).find(s => s.id === other.session_id);
+                const oFac = other.faculty_id || (oMeta && oMeta.faculty_id);
+                if (oFac === facultyId && other.day === d) {
+                  const oDur = (oMeta && oMeta.duration) || 1;
+                  return Math.max(p, +other.start_period) <= Math.min(p + aff.dur - 1, +other.start_period + oDur - 1);
+                }
+                return false;
+              });
+
+              if (!facBusy) {
+                foundSlot = {
+                  session_id: aff.sess.session_id,
+                  kind: aff.meta?.kind || "lecture",
+                  faculty_id: facultyId,
+                  from_day: aff.sess.day,
+                  from_period: aff.sStart,
+                  from_room: originalRoom,
+                  to_day: d,
+                  to_period: p,
+                  to_room: rm,
+                  reason: `Relocated from ${aff.sess.day} P${aff.sStart} due to faculty unavailability`
+                };
+                break dayLoop;
+              }
+            }
+          }
+        }
+      }
+
+      if (!foundSlot) {
+        return {
+          canReschedule: false,
+          affectedCount: affected.length,
+          reason: `Rejected: Clashes with existing timetable. Session ${aff.sess.session_id} cannot be rescheduled without conflicting with other lectures, rooms, or student groups.`
+        };
+      }
+      proposedMoves.push(foundSlot);
+    }
+
+    return {
+      canReschedule: true,
+      affectedCount: affected.length,
+      moves: proposedMoves,
+      reason: `Found clash-free relocation: ${proposedMoves.map(m => `${m.session_id} -> ${m.to_day} P${m.to_period} in ${m.to_room}`).join("; ")}`
+    };
   },
 
   async api(path, body, { method } = {}) {
@@ -180,22 +569,77 @@ const CIT = {
         reason: u.reason || "Maintenance"
       }));
 
-      // Extract real pending items from CIT_PENDING_APPROVALS and disruption proposals
-      const pendingApprovals = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+      // Categorize approvals accurately
+      function categorizeApproval(item) {
+        const cat = (item.category || item.requested_category || "").toLowerCase();
+        const title = (item.title || "").toLowerCase();
+        const id = (item.id || item.ref || "").toUpperCase();
+
+        if (cat.includes("faculty") || cat.includes("leave") || title.includes("faculty leave") || id.startsWith("CR-")) {
+          return { label: "Faculty Leave", tagClass: "warn", type: "faculty_leave" };
+        }
+        if (cat.includes("repair") || cat.includes("closure") || cat.includes("disruption") || id.startsWith("PR-")) {
+          return { label: "Campus Repair", tagClass: "danger", type: "campus_repair" };
+        }
+        if (cat.includes("guest") || title.includes("guest")) {
+          return { label: "Guest Lecture", tagClass: "info", type: "guest_lecture" };
+        }
+        if (cat.includes("dept") || cat.includes("department") || title.includes("class") || title.includes("lab") || title.includes("eee")) {
+          return { label: "Department Event", tagClass: "accent", type: "department_event" };
+        }
+        if (cat.includes("institute")) {
+          return { label: "Institute Event", tagClass: "primary", type: "institute_event" };
+        }
+        if (cat.includes("club") || cat.includes("spectra") || title.includes("quiz") || title.includes("fest")) {
+          return { label: "Club / Fest Event", tagClass: "success", type: "club_event" };
+        }
+        if (item.type === "reschedule" || id.startsWith("CR-") || id.startsWith("PR-")) {
+          return { label: "Faculty Reschedule", tagClass: "warn", type: "reschedule" };
+        }
+        return { label: "Room Booking", tagClass: "info", type: "booking" };
+      }
+
+      // Extract real pending items from Cloud Firestore across all devices
+      const cloudApprovals = await CIT.cloud.getPendingApprovals();
+
+      // Auto-migrate any local pending items to Cloud if they aren't there yet
+      const localPending = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+      for (const lp of localPending) {
+        if (!cloudApprovals.some(ca => ca.id === lp.id)) {
+          await CIT.cloud.savePendingApproval(lp);
+          cloudApprovals.push(lp);
+        }
+      }
+
       const disruptionProposals = JSON.parse(localStorage.getItem("CIT_DISRUPTION_PROPOSALS") || "[]").filter(p => p.status === "pending");
 
       const pendingItems = [
-        ...pendingApprovals.map(b => ({
-          item_type: "booking_decision",
-          ref: b.id,
-          summary: `${b.title} (${b.requester}) - ${b.room_id || b.requested_room || 'AUD'} ${b.day} P${b.start_period}-P${b.end_period}`
-        })),
-        ...disruptionProposals.map(p => ({
-          item_type: "reschedule_proposal",
-          item_id: p.id,
-          ref: "PR-" + p.id,
-          summary: p.changes_summary || p.description || "Campus disruption repair"
-        }))
+        ...cloudApprovals.map(b => {
+          const catInfo = categorizeApproval(b);
+          return {
+            item_type: catInfo.type,
+            category_label: catInfo.label,
+            tag_class: catInfo.tagClass,
+            ref: b.id,
+            summary: `${b.title} (${b.requester || "Requester"}) - ${b.room_id || b.requested_room || 'AUD'} ${b.day || 'THU'} P${b.start_period || 10}-P${b.end_period || 12}`,
+            day: b.day,
+            room_id: b.room_id || b.requested_room,
+            start_period: b.start_period,
+            end_period: b.end_period,
+            proposal_id: b.proposal_id
+          };
+        }),
+        // Only include disruption proposals that are not already represented in cloud approvals
+        ...disruptionProposals
+          .filter(p => !cloudApprovals.some(ca => ca.proposal_id === p.id || ca.id === `CR-${p.id}` || ca.id === `PR-${p.id}`))
+          .map(p => ({
+            item_type: "campus_repair",
+            category_label: "Campus Repair",
+            tag_class: "danger",
+            item_id: p.id,
+            ref: "PR-" + p.id,
+            summary: p.changes_summary || p.description || "Campus disruption repair"
+          }))
       ];
 
       return {
@@ -219,7 +663,7 @@ const CIT = {
           created_at: new Date().toISOString()
         },
         pending: pendingItems,
-        proposals_pending: disruptionProposals.length,
+        proposals_pending: pendingItems.filter(p => p.item_type === "campus_repair" || p.item_type === "faculty_leave" || p.item_type === "reschedule").length,
         my_requests: bookings.slice(0, 5),
         utilization: utilization,
         closures: closures
@@ -406,7 +850,15 @@ const CIT = {
       const schedule = await CIT.loadCanonicalSchedule();
       const decisionsMap = new Map(((schedule.fest_week && schedule.fest_week.bookings) || []).map(b => [b.request_id, b]));
 
-      const rawBookings = data.booking_requests || [];
+      const rawBookings = [...(data.booking_requests || [])];
+      try {
+        const cloudPending = await CIT.cloud.getPendingApprovals();
+        cloudPending.filter(p => !p.proposal_id && p.type !== "reschedule").forEach(cp => {
+          if (!rawBookings.some(b => b.id === cp.id)) {
+            rawBookings.unshift(cp);
+          }
+        });
+      } catch (e) { }
       const requests = [];
 
       for (let i = 0; i < rawBookings.length; i++) {
@@ -1115,73 +1567,72 @@ const CIT = {
     }
 
     if (path.startsWith("admin/pending_approvals.php")) {
-      const pendingList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
+      const pendingList = await CIT.cloud.getPendingApprovals();
       return { requests: pendingList };
     }
 
     if (path.startsWith("admin/decide_approval.php")) {
       const id = body && body.id;
       const action = body && body.action; // "approve" or "reject"
-      let pendingList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
-      const targetReq = pendingList.find(r => r.id === id);
+      const targetReq = (await CIT.cloud.getPendingApprovals()).find(r => r.id === id);
 
-      if (targetReq) {
-        pendingList = pendingList.filter(r => r.id !== id);
-        localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(pendingList));
+      // Remove from cloud pending approvals across all devices
+      await CIT.cloud.removePendingApproval(id);
 
-        // If this was a faculty leave / disruption proposal
-        if (targetReq.proposal_id) {
-          const proposals = JSON.parse(localStorage.getItem("CIT_DISRUPTION_PROPOSALS") || "[]");
-          const foundProp = proposals.find(p => +p.id === +targetReq.proposal_id);
-          if (foundProp) {
-            foundProp.status = action === "approve" ? "approved" : "rejected";
-            foundProp.decided_at = new Date().toISOString();
-            foundProp.decided_by_name = (CIT.getCurrentUser() && CIT.getCurrentUser().display_name) || "Dean of Academics";
-            localStorage.setItem("CIT_DISRUPTION_PROPOSALS", JSON.stringify(proposals));
+      // If this was a faculty leave / disruption proposal
+      if (id.startsWith("CR-") || (targetReq && targetReq.proposal_id)) {
+        const propId = (targetReq && targetReq.proposal_id) || id.replace("CR-", "");
+        const proposals = JSON.parse(localStorage.getItem("CIT_DISRUPTION_PROPOSALS") || "[]");
+        const foundProp = proposals.find(p => +p.id === +propId);
+        if (foundProp) {
+          foundProp.status = action === "approve" ? "approved" : "rejected";
+          foundProp.decided_at = new Date().toISOString();
+          foundProp.decided_by_name = (CIT.getCurrentUser() && CIT.getCurrentUser().display_name) || "Dean of Academics";
+          localStorage.setItem("CIT_DISRUPTION_PROPOSALS", JSON.stringify(proposals));
 
-            if (action === "approve") {
-              const schedule = await CIT.loadCanonicalSchedule();
-              const schedSessions = schedule.sessions || [];
-              (foundProp.changes || []).forEach(m => {
-                const match = schedSessions.find(s => s.session_id === m.session_id);
-                if (match) {
-                  match.day = m.to_day;
-                  match.start_period = m.to_period;
-                  match.room_id = m.to_room;
-                }
-              });
-              CIT.scheduleCache = schedule;
-              localStorage.setItem("CIT_GENERATED_SCHEDULE", JSON.stringify(schedule));
-            }
-          }
-        } else {
-          // Update in dataset
-          const curData = await CIT.loadCanonicalDataset();
-          curData.booking_requests = curData.booking_requests || [];
-          const match = curData.booking_requests.find(b => b.id === id);
-          if (match) {
-            match.status = action === "approve" ? "approved" : "rejected";
-            match.reason = action === "approve" ? "Approved by Dean of Academics" : "Rejected by Dean of Academics";
-          }
-          CIT.datasetCache = curData;
-          localStorage.setItem("CIT_IMPORTED_DATASET", JSON.stringify(curData));
-
-          // If approved, integrate into active schedule timetable
           if (action === "approve") {
             const schedule = await CIT.loadCanonicalSchedule();
-            schedule.fest_week = schedule.fest_week || { bookings: [], session_overrides: [] };
-            schedule.fest_week.bookings.unshift({
-              request_id: id,
-              status: "approved",
-              day: targetReq.day,
-              start_period: targetReq.start_period,
-              end_period: targetReq.end_period,
-              room_id: targetReq.room_id,
-              reason: "Approved by Dean of Academics"
+            const schedSessions = schedule.sessions || [];
+            (foundProp.changes || []).forEach(m => {
+              const match = schedSessions.find(s => s.session_id === m.session_id);
+              if (match) {
+                match.day = m.to_day;
+                match.start_period = m.to_period;
+                match.room_id = m.to_room;
+              }
             });
             CIT.scheduleCache = schedule;
             localStorage.setItem("CIT_GENERATED_SCHEDULE", JSON.stringify(schedule));
           }
+        }
+      } else {
+        // Spectra Room Booking Request
+        const curData = await CIT.loadCanonicalDataset();
+        curData.booking_requests = curData.booking_requests || [];
+        const match = curData.booking_requests.find(b => b.id === id);
+        if (match) {
+          match.status = action === "approve" ? "approved" : "rejected";
+          match.reason = action === "approve" ? "Approved by Dean of Academics" : "Rejected by Dean of Academics";
+        }
+        CIT.datasetCache = curData;
+        localStorage.setItem("CIT_IMPORTED_DATASET", JSON.stringify(curData));
+
+        if (action === "approve") {
+          const schedule = await CIT.loadCanonicalSchedule();
+          schedule.fest_week = schedule.fest_week || { bookings: [], session_overrides: [] };
+          const bookingEntry = {
+            request_id: id,
+            status: "approved",
+            day: (targetReq && targetReq.day) || body.day || match?.day || "THU",
+            start_period: +((targetReq && targetReq.start_period) || body.start_period || match?.start_period || 10),
+            end_period: +((targetReq && targetReq.end_period) || body.end_period || match?.end_period || 12),
+            room_id: (targetReq && targetReq.room_id) || body.room_id || match?.room_id || "AUD",
+            reason: "Approved by Dean of Academics"
+          };
+          schedule.fest_week.bookings.unshift(bookingEntry);
+          CIT.scheduleCache = schedule;
+          localStorage.setItem("CIT_GENERATED_SCHEDULE", JSON.stringify(schedule));
+          await CIT.cloud.saveApprovedBooking(bookingEntry);
         }
       }
 
@@ -1196,46 +1647,109 @@ const CIT = {
       const attendance = (body && body.attendance) || 50;
       const cat = (body && body.requested_category) || "club_event";
       const win = (body && body.windows && body.windows[0]) || { day: "THU", from_period: 10, to_period: 12 };
+      const duration = (body && body.duration_periods) || (win.to_period - win.from_period) || 2;
+      const startP = win.from_period;
+      const endP = Math.min(13, startP + duration - 1);
       const reqId = "BR-" + Math.floor(100 + Math.random() * 900);
-      const reqRoom = (body && body.requested_room) || (attendance > 150 ? "AUD" : "LH-1");
+      let reqRoom = (body && body.requested_room) || "";
 
+      const schedule = await CIT.loadCanonicalSchedule();
+      const dataset = await CIT.loadCanonicalDataset();
+
+      // 1. CLASH DETECTION CHECK FIRST!
+      const clashResult = CIT.checkTimetableClash({
+        day: win.day,
+        start_period: startP,
+        end_period: endP,
+        room_id: reqRoom,
+        attendance: attendance,
+        mandatory_for_groups: body && body.mandatory_for_groups
+      }, schedule, dataset);
+
+      // IF CLASHING -> REJECT IMMEDIATELY RIGHT HERE! (DO NOT SEND TO DEAN)
+      if (clashResult.clash) {
+        const rejectionReason = clashResult.reason || "Rejected: Clashes with existing timetable.";
+        const decisionObj = {
+          status: "rejected",
+          room_id: reqRoom || null,
+          day: win.day,
+          start_period: startP,
+          end_period: endP,
+          effective_category: cat,
+          reason: rejectionReason
+        };
+
+        const rejectedRecord = {
+          id: reqId,
+          title: title,
+          requester: currentUser.display_name,
+          attendance: attendance,
+          requested_category: cat,
+          effective_category: cat,
+          windows: [{ day: win.day, from_period: startP, to_period: endP }],
+          requested_room: reqRoom,
+          room_id: reqRoom || "None",
+          day: win.day,
+          start_period: startP,
+          end_period: endP,
+          status: "rejected",
+          reason: rejectionReason,
+          source: "app",
+          created_at: new Date().toISOString()
+        };
+
+        dataset.booking_requests = dataset.booking_requests || [];
+        dataset.booking_requests.unshift(rejectedRecord);
+        CIT.datasetCache = dataset;
+        localStorage.setItem("CIT_IMPORTED_DATASET", JSON.stringify(dataset));
+
+        return {
+          ok: true,
+          request_ids: [reqId],
+          decisions: [decisionObj]
+        };
+      }
+
+      // 2. IF NOT CLASHING -> SEND TO DEAN FOR APPROVAL (OR AUTO-APPROVE IF DEAN)
+      const assignedRoom = reqRoom || clashResult.assigned_room || (attendance > 150 ? "AUD" : "LH-1");
       const decisionObj = {
         status: isDeanAdmin ? "approved" : "pending",
-        room_id: reqRoom,
+        room_id: assignedRoom,
         day: win.day,
-        start_period: win.from_period,
-        end_period: Math.min(13, win.from_period + (body.duration_periods || 2) - 1),
+        start_period: startP,
+        end_period: endP,
         effective_category: cat,
         reason: isDeanAdmin
-          ? `Approved in ${reqRoom} on ${win.day} by Dean of Academics.`
-          : "Submitted for Dean of Academics approval."
+          ? `Approved in ${assignedRoom} on ${win.day} by Dean of Academics.`
+          : `No clashes detected with existing timetable. Sent to Dean of Academics for approval.`
       };
 
       const bookingRecord = {
         id: reqId,
         title: title,
+        category: cat,
         requester: currentUser.display_name,
         attendance: attendance,
         requested_category: cat,
         effective_category: cat,
-        windows: [{ day: win.day, from_period: win.from_period, to_period: win.to_period }],
+        windows: [{ day: win.day, from_period: startP, to_period: endP }],
         requested_room: reqRoom,
-        room_id: reqRoom,
+        room_id: assignedRoom,
         day: win.day,
-        start_period: decisionObj.start_period,
-        end_period: decisionObj.end_period,
+        start_period: startP,
+        end_period: endP,
         status: decisionObj.status,
-        source: "app"
+        reason: decisionObj.reason,
+        source: "app",
+        type: "booking",
+        created_at: new Date().toISOString()
       };
 
-      // If user is not Dean/Admin, queue in pending approvals for Dean
       if (!isDeanAdmin) {
-        const pendingList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
-        pendingList.unshift(bookingRecord);
-        localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(pendingList));
+        // Send to Dean in cloud Firestore so all Dean devices see it!
+        await CIT.cloud.savePendingApproval(bookingRecord);
       } else {
-        // Direct admin approval: update canonical schedule
-        const schedule = await CIT.loadCanonicalSchedule();
+        // Direct admin approval: update schedule
         schedule.fest_week = schedule.fest_week || { bookings: [], session_overrides: [] };
         schedule.fest_week.bookings.unshift({
           request_id: reqId,
@@ -1248,14 +1762,13 @@ const CIT = {
         });
         CIT.scheduleCache = schedule;
         localStorage.setItem("CIT_GENERATED_SCHEDULE", JSON.stringify(schedule));
+        await CIT.cloud.saveApprovedBooking(schedule.fest_week.bookings[0]);
       }
 
-      // Persist the request record in dataset
-      const curData = await CIT.loadCanonicalDataset();
-      curData.booking_requests = curData.booking_requests || [];
-      curData.booking_requests.unshift(bookingRecord);
-      CIT.datasetCache = curData;
-      localStorage.setItem("CIT_IMPORTED_DATASET", JSON.stringify(curData));
+      dataset.booking_requests = dataset.booking_requests || [];
+      dataset.booking_requests.unshift(bookingRecord);
+      CIT.datasetCache = dataset;
+      localStorage.setItem("CIT_IMPORTED_DATASET", JSON.stringify(dataset));
 
       return {
         ok: true,
@@ -1270,16 +1783,35 @@ const CIT = {
       const fromP = +u.get("from") || 10;
       const toP = +u.get("to") || 12;
       const att = +u.get("attendance") || 50;
+      const types = (u.get("types") || "").split(",").filter(Boolean);
+      const schedule = await CIT.loadCanonicalSchedule();
 
       const availableRooms = (data.rooms || []).map(r => {
-        const fits = r.capacity >= att;
+        const fitsCapacity = r.capacity >= att;
+        const fitsType = !types.length || types.includes(r.type);
+        const suitable = fitsCapacity && fitsType;
+        const problems = [];
+        if (!fitsCapacity) problems.push("Capacity (" + r.capacity + ") too small for " + att + " people");
+        if (!fitsType) problems.push("Room type (" + r.type + ") does not match requested");
+
+        const clashCheck = CIT.checkTimetableClash({
+          day: day,
+          start_period: fromP,
+          end_period: toP,
+          room_id: r.id,
+          attendance: att
+        }, schedule, data);
+
+        const free = !clashCheck.clash;
+        const taken_by = clashCheck.clash ? [clashCheck.reason.replace("Clashes with existing timetable: ", "")] : [];
+
         return {
           room_id: r.id,
           capacity: r.capacity,
-          suitable: fits,
-          free: true,
-          problems: fits ? [] : ["Capacity (" + r.capacity + ") too small for " + att + " people"],
-          taken_by: []
+          suitable: suitable,
+          free: free,
+          problems: problems,
+          taken_by: taken_by
         };
       });
 
@@ -1408,6 +1940,7 @@ const CIT = {
       const text = (body && body.text) || "";
       const lower = text.toLowerCase();
       const currentUser = CIT.getCurrentUser() || { faculty_id: "F12", display_name: "Dr. Amit Behera" };
+      const facId = currentUser.faculty_id || "F12";
 
       // Parse days
       let days = ["WED"];
@@ -1427,26 +1960,52 @@ const CIT = {
         periods = [6, 7, 8, 9];
       }
 
+      const schedule = await CIT.loadCanonicalSchedule();
+      const dataset = await CIT.loadCanonicalDataset();
+
+      // 1. CLASH DETECTION CHECK FOR RESCHEDULE!
+      const checkRes = CIT.checkFacultyReschedule(facId, days, periods, schedule, dataset);
+
       const facultyChanges = [{
         type: "faculty_unavailable",
-        faculty_id: currentUser.faculty_id || "F12",
+        faculty_id: facId,
         days: days,
         periods: periods,
         reason: text || "Faculty unavailability report"
       }];
 
       if (isPreview) {
+        if (!checkRes.canReschedule) {
+          return {
+            changes: [],
+            assumptions: [],
+            follow_up: checkRes.reason || "This leave request clashes with your teaching schedule and cannot be accommodated without conflicting with other sessions."
+          };
+        }
         return {
           changes: facultyChanges,
-          assumptions: [`Rescheduling ${days.join(", ")} P${periods.join(", P")} teaching sessions to available parallel lecture halls.`],
+          assumptions: [
+            checkRes.affectedCount > 0
+              ? `No clashes with timetable. ${checkRes.affectedCount} session(s) can be cleanly moved without conflict: ${checkRes.reason}`
+              : "No teaching sessions clash with this time slot."
+          ],
           follow_up: null
         };
       }
 
-      // Submit actual proposal for Dean approval
+      // If user submits and it clashes -> REJECT IMMEDIATELY! (DO NOT SEND TO DEAN)
+      if (!checkRes.canReschedule) {
+        return {
+          ok: false,
+          status: "rejected",
+          reason: checkRes.reason || "Rejected: Clashes with existing timetable. No valid timetable fits that change without clashes."
+        };
+      }
+
+      // 2. IF NOT CLASHING -> SEND PROPOSAL TO DEAN FOR APPROVAL
       const propId = Date.now() % 10000;
-      const cleanSummary = `${currentUser.display_name} (${currentUser.faculty_id || "Faculty"}) unavailable on ${days.join(", ")} P${periods[0]}-P${periods[periods.length - 1]}`;
-      
+      const cleanSummary = `${currentUser.display_name} (${facId}) unavailable on ${days.join(", ")} P${periods[0]}-P${periods[periods.length - 1]}`;
+
       const newProposal = {
         id: propId,
         change_request_id: propId,
@@ -1457,52 +2016,47 @@ const CIT = {
         description: cleanSummary,
         changes_summary: cleanSummary,
         disruption: { changes: facultyChanges },
-        sessions_moved: 1,
-        time_changed: 0,
-        room_only_changed: 1,
+        sessions_moved: checkRes.moves.length,
+        time_changed: checkRes.moves.filter(m => m.from_period !== m.to_period || m.from_day !== m.to_day).length,
+        room_only_changed: checkRes.moves.filter(m => m.from_period === m.to_period && m.from_day === m.to_day).length,
         validation: { hard_violation_count: 0 },
-        changes: [{
-          session_id: "CS201-L1",
-          kind: "lecture",
-          faculty_id: currentUser.faculty_id || "F12",
-          from_day: days[0],
-          from_period: periods[0],
-          from_room: "LH-1",
-          to_day: days[0],
-          to_period: periods[0] === 2 ? 4 : 3,
-          to_room: "LH-2",
-          reason: `Relocated from period ${periods[0]} due to faculty leave`
+        changes: checkRes.moves.length > 0 ? checkRes.moves : [{
+          session_id: "NONE",
+          reason: "No sessions required moving"
         }],
         created_at: new Date().toISOString(),
         proposed_version_id: `v1.4-f${propId}`
       };
 
-      const existing = JSON.parse(localStorage.getItem("CIT_DISRUPTION_PROPOSALS") || "[]");
-      existing.unshift(newProposal);
-      localStorage.setItem("CIT_DISRUPTION_PROPOSALS", JSON.stringify(existing));
+      const existingProps = JSON.parse(localStorage.getItem("CIT_DISRUPTION_PROPOSALS") || "[]");
+      existingProps.unshift(newProposal);
+      localStorage.setItem("CIT_DISRUPTION_PROPOSALS", JSON.stringify(existingProps));
 
-      // Also queue into Dean's pending approvals
-      const pendingList = JSON.parse(localStorage.getItem("CIT_PENDING_APPROVALS") || "[]");
-      pendingList.unshift({
+      // SEND TO DEAN VIA FIRESTORE CLOUD!
+      const pendingRecord = {
         id: `CR-${propId}`,
         title: `Faculty Leave: ${currentUser.display_name}`,
         category: "faculty_leave",
         requester: currentUser.display_name,
-        room_id: "LH-1",
+        room_id: checkRes.moves[0]?.from_room || "LH-1",
         day: days[0],
         start_period: periods[0],
         end_period: periods[periods.length - 1],
         status: "pending",
-        proposal_id: propId
-      });
-      localStorage.setItem("CIT_PENDING_APPROVALS", JSON.stringify(pendingList));
+        proposal_id: propId,
+        type: "reschedule",
+        details: checkRes.reason,
+        created_at: new Date().toISOString()
+      };
+
+      await CIT.cloud.savePendingApproval(pendingRecord);
 
       return {
         ok: true,
         status: "pending",
         proposal_id: propId,
         change_request_id: propId,
-        summary: { sessions_moved: 1, room_only: 0, time_changed: 1 }
+        summary: { sessions_moved: checkRes.moves.length, room_only: 0, time_changed: checkRes.moves.length }
       };
     }
 

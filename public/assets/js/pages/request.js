@@ -113,12 +113,18 @@
     const body = collect();
     const out = document.getElementById("result");
     try {
-      const r = await CIT.busy(document.getElementById("submit"), "Deciding", () => CIT.api("bookings/create.php", body));
+      const r = await CIT.busy(document.getElementById("submit"), "Checking clashes & deciding", () => CIT.api("bookings/create.php", body));
       out.innerHTML = r.decisions.map((d, i) => d ? `<div class="callout ${d.status === "approved" ? "ok" : d.status === "rejected" ? "bad" : "warn"}">
-          <span class="mono">${esc(r.request_ids[i])}</span> ${statusTag(d.status)} ${d.room_id ? `<span class="mono">${esc(d.room_id)}</span> ${slot(d.day, d.start_period, d.end_period)}` : ""}
-          <div style="margin-top:4px">${esc(d.reason)}</div>${d.effective_category !== body.requested_category ? `<div class="muted">Counted as ${words(d.effective_category)} for your role.</div>` : ""}</div>`
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span class="mono"><b>${esc(r.request_ids[i])}</b></span>
+            ${d.status === "rejected" ? `<span class="tag bad">Rejected (Clash)</span>` : d.status === "pending" ? `<span class="tag warn">Pending Dean Approval</span>` : statusTag(d.status)}
+            ${d.room_id ? `<span class="mono">${esc(d.room_id)}</span> ${slot(d.day, d.start_period, d.end_period)}` : ""}
+          </div>
+          <div>${esc(d.reason)}</div>
+          ${d.effective_category !== body.requested_category ? `<div class="muted" style="margin-top:4px">Counted as ${words(d.effective_category)} for your role.</div>` : ""}
+        </div>`
         : `<div class="callout"><span class="mono">${esc(r.request_ids[i])}</span> saved. It will be decided once a timetable exists.</div>`).join("") +
-        `<a href="bookings.html?id=${encodeURIComponent(r.request_ids[0])}">Open in Spectra bookings</a>`;
+        (r.decisions.some(d => d && d.status !== "rejected") ? `<div style="margin-top:10px"><a href="bookings.html?id=${encodeURIComponent(r.request_ids[0])}">Open in Spectra bookings</a></div>` : "");
     } catch (err) { out.innerHTML = CIT.errorHtml(err); }
   };
   document.getElementById("avail").onclick = async ev => {
