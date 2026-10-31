@@ -18,7 +18,7 @@ if ($u['role'] === 'department_coordinator') {
 $db = cit_db();
 $active = cit_require_active($db);
 $st = $db->prepare('SELECT e.session_id, e.day, e.start_period, e.duration, e.room_id, s.course_id, s.kind, c.title,
-                           GROUP_CONCAT(DISTINCT g.group_id ORDER BY g.group_id SEPARATOR ",") AS groups
+                           GROUP_CONCAT(DISTINCT g.group_id ORDER BY g.group_id SEPARATOR ",") AS `groups`
                     FROM schedule_entries e
                     JOIN sessions s ON s.id = e.session_id
                     JOIN courses c ON c.id = s.course_id
