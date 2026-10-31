@@ -212,6 +212,17 @@ function cit_chat(PDO $db, array $user, string $msg, array $history): array
             'data' => null, 'action' => ['type' => 'open_change_form', 'text' => $msg]],
         default => cit_rag_answer($db, $msg, $user, $history),
     };
+    // Treat deterministic tools as the source of truth, then let the model
+    // explain their live result when configured. Never let an LLM make or
+    // approve a booking; tool actions remain read-only/pre-filled forms.
+    if (cit_llm_available() && isset($out['reply']) && !empty($out['data'])) {
+        $grounded = cit_rag_answer($db, $msg, $user, $history, json_encode($out['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        if (!empty($grounded['used_llm'])) {
+            $out['reply'] = $grounded['reply'];
+            $out['sources'] = $grounded['sources'];
+            $out['used_llm'] = true;
+        }
+    }
     $out['intent'] = $intent;
     $out['sources'] ??= [];
     $out['used_llm'] ??= false;
