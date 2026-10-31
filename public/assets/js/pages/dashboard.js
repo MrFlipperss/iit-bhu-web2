@@ -13,7 +13,7 @@
     ${isAdmin ? `<div class="actions">
       ${s.version ? `<button class="btn" id="improve" title="Spend another ~35 s lowering soft penalties">${icon("refresh")} Improve</button>` : ""}
       <button class="btn ${s.version ? "" : "primary"}" id="gen">${icon("grid")} ${s.version ? "Regenerate" : "Generate timetable"}</button>
-      ${s.version ? `<a class="btn primary" href="/api/schedule/export.php">${icon("download")} schedule.json</a>` : ""}</div>` : ""}</div>`;
+      ${s.version ? `<a class="btn primary" href="/exports/schedule.json" download="schedule.json">${icon("download")} schedule.json</a>` : ""}</div>` : ""}</div>`;
 
   if (!s.version) {
     main.innerHTML = head + `<div class="panel empty"><h2>No timetable yet</h2><p>${isAdmin ? "Generate builds the regular week, decides every Spectra request and plans the midsems. It takes about 35 seconds." : "An Admin needs to generate the timetable first."}</p></div>`;
@@ -41,15 +41,17 @@
   const invHtml = inv.length ? `<div class="callout warn">Priority inversions (a lower-priority request holds a room a rejected one could use):<ul>${inv.map(i => `<li>${esc(i)}</li>`).join("")}</ul></div>` : "";
 
   const pendingRows = s.pending.map(p => {
-    const href = p.item_type === "booking_decision" ? `bookings.html?id=${encodeURIComponent(p.ref)}` : p.item_type === "reschedule_proposal" ? `reschedule.html?id=${p.item_id}` : "reschedule.html";
-    return `<tr class="clickable" onclick="location.href='${href}'"><td>${p.item_type === "booking_decision" ? "Booking" : p.item_type === "reschedule_proposal" ? "Repair" : "Change request"}</td>
-      <td class="mono">${esc(p.ref || p.item_id)}</td><td>${esc(p.summary)}</td></tr>`;
+    const isBooking = p.item_type === "booking_decision";
+    const href = isBooking ? `admin.html#approvals-list` : p.item_type === "reschedule_proposal" ? `reschedule.html?id=${p.item_id}` : "reschedule.html";
+    return `<tr><td><span class="tag ${isBooking ? 'info' : 'warn'}">${isBooking ? "Spectra Booking" : "Campus Repair"}</span></td>
+      <td class="mono"><b>${esc(p.ref || p.item_id)}</b></td><td>${esc(p.summary)}</td>
+      <td><a class="btn small" href="${href}">Review</a></td></tr>`;
   }).join("");
   const mine = s.my_requests.map(r => `<tr class="clickable" onclick="location.href='bookings.html?id=${encodeURIComponent(r.id)}'"><td class="mono">${esc(r.id)}</td><td>${esc(r.title)}</td>
       <td>${r.state === "cancelled" ? statusTag("cancelled") : r.status ? statusTag(r.status) : statusTag("pending")}</td><td>${r.room_id ? esc(r.room_id) + " " + slot(r.day, r.start_period, r.end_period) : ""}</td></tr>`).join("");
   const attention = isAdmin
-    ? `<div class="panel"><div class="panel-head"><h2>Waiting for you</h2><span class="muted">${s.pending.length}</span></div>
-        ${s.pending.length ? `<div class="table-wrap"><table><tr><th>Type</th><th>Ref</th><th>Summary</th></tr>${pendingRows}</table></div>` : `<p class="sub">Nothing to review.</p>`}</div>`
+    ? `<div class="panel"><div class="panel-head"><h2>Waiting for you</h2><span class="badge ${s.pending.length ? 'warn' : ''}">${s.pending.length}</span></div>
+        ${s.pending.length ? `<div class="table-wrap"><table><tr><th>Type</th><th>Ref</th><th>Summary</th><th>Action</th></tr>${pendingRows}</table></div>` : `<p class="sub">Nothing to review.</p>`}</div>`
     : `<div class="panel"><div class="panel-head"><h2>Your requests</h2><a href="request.html">New request</a></div>
         ${s.my_requests.length ? `<div class="table-wrap"><table><tr><th>ID</th><th>Title</th><th>Decision</th><th>Room and time</th></tr>${mine}</table></div>` : `<p class="sub">You have not asked for a room yet.</p>`}</div>`;
 

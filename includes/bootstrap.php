@@ -27,6 +27,7 @@ function cit_send(int $http, array $body): never
         header('Content-Type: application/json; charset=utf-8');
         header('Cache-Control: private, no-store');      // Firebase Hosting must never cache API answers
         header('X-Content-Type-Options: nosniff');
+        header('Connection: close');
     }
     echo json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;

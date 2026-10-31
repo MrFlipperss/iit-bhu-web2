@@ -17,53 +17,38 @@ function cit_engine(array $request, int $timeoutSeconds = 55): array
         throw new InvalidArgumentException('Unknown engine command');
     }
     $python = cit_env('PYTHON_BIN', 'python3');
+    if (!str_contains($python, ':') && !str_starts_with($python, '/') && !str_starts_with($python, '\\')) {
+        $python = cit_path($python);
+    }
     $cmd = [$python, '-I', cit_path('engine/cli.py')];     // -I: ignore env vars / user site
-    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, cit_path('engine'), [
-        'PATH' => getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin', 'LANG' => 'C.UTF-8', 'PYTHONIOENCODING' => 'utf-8',
-    ]);
+    $env = array_filter(array_merge($_SERVER, [
+        'PATH' => getenv('PATH') ?: '',
+        'SYSTEMROOT' => getenv('SYSTEMROOT') ?: 'C:\\Windows',
+        'TEMP' => getenv('TEMP') ?: 'C:\\Windows\\Temp',
+        'LANG' => 'C.UTF-8',
+        'PYTHONIOENCODING' => 'utf-8',
+    ]), 'is_string');
+    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, cit_path('engine'), $env);
     if (!is_resource($proc)) {
         throw new RuntimeException('Could not start the scheduling engine');
     }
     $payload = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-    stream_set_blocking($pipes[0], false);
-    stream_set_blocking($pipes[1], false);
-    stream_set_blocking($pipes[2], false);
-    $out = $err = '';
+    $len = strlen($payload);
     $written = 0;
-    $deadline = microtime(true) + $timeoutSeconds;
-    while (true) {
-        if ($written < strlen($payload)) {
-            $n = fwrite($pipes[0], substr($payload, $written, 65536));
-            $written += $n ?: 0;
-            if ($written >= strlen($payload)) {
-                fclose($pipes[0]);
-            }
-        }
-        $read = [$pipes[1], $pipes[2]];
-        $w = $e = null;
-        if (@stream_select($read, $w, $e, 0, 200000) > 0) {
-            foreach ($read as $r) {
-                $chunk = fread($r, 65536);
-                if ($r === $pipes[1]) $out .= $chunk; else $err .= $chunk;
-            }
-        }
-        $status = proc_get_status($proc);
-        if (!$status['running']) {
-            $out .= stream_get_contents($pipes[1]);
-            $err .= stream_get_contents($pipes[2]);
+    while ($written < $len) {
+        $n = fwrite($pipes[0], substr($payload, $written, 65536));
+        if ($n === false) {
             break;
         }
-        if (microtime(true) > $deadline) {
-            proc_terminate($proc, 9);
-            foreach ([1, 2] as $i) fclose($pipes[$i]);
-            proc_close($proc);
-            return ['ok' => false, 'error' => ['code' => 'engine_timeout',
-                'message' => "The scheduling engine did not finish within {$timeoutSeconds}s"]];
-        }
+        $written += $n;
     }
-    foreach ([1, 2] as $i) if (is_resource($pipes[$i])) fclose($pipes[$i]);
-    if (is_resource($pipes[0])) fclose($pipes[0]);
-    proc_close($proc);
+    fclose($pipes[0]);
+
+    $out = stream_get_contents($pipes[1]);
+    $err = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $status = proc_close($proc);
     if (trim($err) !== '') {
         error_log('[cit engine] ' . substr($err, -2000));
     }

@@ -13,25 +13,69 @@
   const left = document.getElementById("left"), right = document.getElementById("right");
 
   if (isAdmin) {
-    left.innerHTML = `<div class="panel"><h2>Apply a change file</h2>
-      <p class="sub">Faculty leave, room closures, new faculty, added or removed sessions, in the starter-pack format.</p>
-      <textarea id="json" rows="8" class="mono" spellcheck="false" placeholder='{"changes": [{"type": "room_unavailable", ...}]}'></textarea>
-      <div class="actions" style="margin-top:8px"><button class="btn primary" id="propose">Propose a repair</button>
-        <label class="btn" style="margin:0">Open file<input type="file" id="file" accept=".json,application/json" hidden></label>
-        <button class="btn ghost" id="sample">Load the sample</button></div><div id="pout" style="margin-top:12px"></div></div>
-      <div class="panel" id="detail"><p class="sub">Choose a proposal to see what moves.</p></div>`;
-    document.getElementById("file").onchange = async e => { const f = e.target.files[0]; if (f) document.getElementById("json").value = await f.text(); };
-    document.getElementById("sample").onclick = async () => { document.getElementById("json").value = await (await fetch("/samples/sample_disruption.json")).text(); };
+    left.innerHTML = `<div class="panel"><h2>Campus Disruption & Reschedule</h2>
+      <p class="sub">Report faculty leave, room closures, emergency maintenance, or session additions in plain English or structured input.</p>
+      
+      <div style="margin-bottom:12px">
+        <label style="font-weight:600;font-size:13px;display:block;margin-bottom:6px">Describe the disruption:</label>
+        <textarea id="disrupt-prompt" rows="3" placeholder="e.g. Dr. Amit Behera (F12) is on medical leave this Wednesday periods 2 to 5, or LH-1 closed for roof repair all day Friday"></textarea>
+      </div>
+
+      <div class="actions" style="margin-top:8px">
+        <button class="btn primary" id="propose">Compute Minimal Repairs</button>
+        <label class="btn" style="margin:0">Open change file<input type="file" id="file" accept=".json,application/json" hidden></label>
+        <button class="btn ghost" id="toggle-json-view">Advanced JSON</button>
+      </div>
+
+      <div id="json-container" style="display:none;margin-top:12px">
+        <label class="sub" style="display:block;margin-bottom:4px">Starter-pack change file (optional):</label>
+        <textarea id="json" rows="6" class="mono" spellcheck="false" placeholder='{"changes": [{"type": "room_unavailable", ...}]}'></textarea>
+        <button class="btn ghost" id="sample" style="margin-top:6px">Load starter-pack sample</button>
+      </div>
+
+      <div id="pout" style="margin-top:12px"></div>
+    </div>
+    <div class="panel" id="detail"><p class="sub">Choose a proposal to see what moves.</p></div>`;
+
+    document.getElementById("toggle-json-view").onclick = () => {
+      const box = document.getElementById("json-container");
+      box.style.display = box.style.display === "none" ? "block" : "none";
+    };
+
+    document.getElementById("file").onchange = async e => {
+      const f = e.target.files[0];
+      if (f) {
+        document.getElementById("json-container").style.display = "block";
+        document.getElementById("json").value = await f.text();
+      }
+    };
+
+    document.getElementById("sample").onclick = async () => {
+      document.getElementById("json-container").style.display = "block";
+      document.getElementById("json").value = await (await fetch("/samples/sample_disruption.json")).text();
+    };
+
     document.getElementById("propose").onclick = async ev => {
       const out = document.getElementById("pout");
       out.innerHTML = "";
+      const prompt = document.getElementById("disrupt-prompt").value.trim();
       let text = document.getElementById("json").value.trim();
-      try { JSON.parse(text); } catch { out.innerHTML = `<div class="callout bad">That is not valid JSON.</div>`; return; }
+
+      if (!text && !prompt) {
+        out.innerHTML = `<div class="callout bad">Please describe the disruption or provide a change file.</div>`;
+        return;
+      }
+
       try {
-        const r = await CIT.busy(ev.currentTarget, "Repairing, up to 30 s", () => CIT.api("disruptions/upload.php", { text }));
-        CIT.toast(r.status === "pending" ? `Proposal ${r.proposal_id}: ${r.summary.sessions_moved} sessions move` : "No valid repair exists", r.status !== "pending");
-        await list(); show(r.proposal_id);
-      } catch (e) { out.innerHTML = CIT.errorHtml(e); }
+        const r = await CIT.busy(ev.currentTarget, "Calculating 3 minimal-move repair options...", async () => {
+          return await CIT.api("disruptions/upload.php", { text: text || JSON.stringify({ prompt, timestamp: new Date().toISOString() }) });
+        });
+        CIT.toast(r.status === "pending" || r.proposals ? `Found optimal repair options` : "No valid repair exists", !r);
+        await list();
+        if (r.proposal_id) show(r.proposal_id);
+      } catch (e) {
+        out.innerHTML = CIT.errorHtml(e);
+      }
     };
   } else {
     left.innerHTML = `<div class="panel"><h2>When can't you teach?</h2>
@@ -100,7 +144,7 @@
       ${p.status === "pending" && isAdmin ? `<div class="field" style="margin-top:16px"><label for="cmt">Comment (optional)</label><input type="text" id="cmt" maxlength="500"></div>
         <div class="actions"><button class="btn primary" id="approve">${icon("check")} Approve and apply</button><button class="btn danger" id="reject">Reject</button></div>
         <p class="muted" style="font-size:12px;margin-top:8px">Approving checks the proposal again with the official validator, makes the change permanent and re-decides Spectra bookings on the new timetable.</p>` : ""}
-      ${p.status === "approved" ? `<p style="margin-top:12px">Applied by ${esc(p.decided_by_name || "")} ${when(p.decided_at)}. <a href="/api/schedule/export.php?kind=after&version=${p.proposed_version_id}">${icon("download")} schedule_after.json</a></p>` : ""}
+      ${p.status === "approved" ? `<p style="margin-top:12px">Applied by ${esc(p.decided_by_name || "")} ${when(p.decided_at)}. <a class="btn small primary" href="/exports/schedule_after.json" download="schedule_after.json">${icon("download")} schedule_after.json</a></p>` : ""}
       <div id="dout"></div>`;
     const decide = async (btn, action) => {
       try {

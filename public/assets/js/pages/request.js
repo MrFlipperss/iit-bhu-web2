@@ -4,14 +4,15 @@
   if (!user) return;
   const meta = await CIT.loadMeta();
   const main = document.getElementById("main");
-  const types = [...new Set(meta.rooms.filter(r => r.allowed_uses.includes("event")).map(r => r.type))];
-  const needs = [...new Set(meta.rooms.flatMap(r => r.features)), "accessible"];
-  const cap = meta.role_caps[user.role];
-  const capRank = meta.categories.find(c => c.code === cap)?.rank ?? 99;
-  const cats = meta.categories.filter(c => +c.bookable);
-  const periodOpts = sel => meta.periods.map(p => `<option value="${p.id}" ${+sel === +p.id ? "selected" : ""}>P${p.id} ${p.start}</option>`).join("");
+  const rooms = (meta.rooms || []).map(r => ({ ...r, allowed_uses: Array.isArray(r.allowed_uses) ? r.allowed_uses : [], features: Array.isArray(r.features) ? r.features : [] }));
+  const types = [...new Set(rooms.filter(r => r.allowed_uses.includes("event")).map(r => r.type))];
+  const needs = [...new Set(rooms.flatMap(r => r.features)), "accessible"];
+  const cap = (meta.role_caps || {})[user.role];
+  const capRank = (meta.categories || []).find(c => c.code === cap)?.rank ?? 99;
+  const cats = (meta.categories || []).filter(c => +c.bookable);
+  const periodOpts = sel => (meta.periods || []).map(p => `<option value="${p.id}" ${+sel === +p.id ? "selected" : ""}>P${p.id} ${p.start}</option>`).join("");
 
-  main.innerHTML = `<div class="page-head"><div><h1>New Spectra request</h1>
+  main.innerHTML = `<div class="page-head"><div><h1>New request page</h1>
       <div class="sub">Describe it in your own words or fill the form. Nothing is booked until you submit, and the decision follows the priority rules.</div></div></div>
     <div class="cols-even">
       <div class="panel"><h2>Describe it</h2>
@@ -35,18 +36,19 @@
         <div class="field"><label>Room types</label><div class="checks" id="types">${types.map(t => `<label class="check"><input type="checkbox" value="${t}"> ${words(t)}</label>`).join("")}</div></div>
         <div class="field"><label>Needs</label><div class="checks" id="needs">${needs.map(n => `<label class="check"><input type="checkbox" value="${n}"> ${words(n)}</label>`).join("")}</div></div>
         <div class="row"><div class="field"><label for="room">Preferred room <span class="muted">(optional)</span></label>
-            <select id="room"><option value="">Any suitable room</option>${meta.rooms.filter(r => r.allowed_uses.includes("event")).map(r => `<option value="${r.id}">${r.id} · ${esc(r.name)} (${r.capacity}${r.accessible ? "" : ", not step-free"})</option>`).join("")}</select></div>
+            <select id="room"><option value="">Any suitable room</option>${rooms.filter(r => r.allowed_uses.includes("event")).map(r => `<option value="${r.id}">${r.id} · ${esc(r.name)} (${r.capacity}${r.accessible ? "" : ", not step-free"})</option>`).join("")}</select></div>
           <div class="field"><label for="groups">Mandatory for groups <span class="muted">(optional)</span></label>
-            <select id="groups" multiple size="3">${meta.groups.map(g => `<option value="${g.id}">${g.id} · ${esc(g.name)}</option>`).join("")}</select></div></div>
+            <select id="groups" multiple size="3">${(meta.groups || []).map(g => `<option value="${g.id}">${g.id} · ${esc(g.name)}</option>`).join("")}</select></div></div>
         <div class="actions"><button class="btn primary" id="submit">Submit request</button><button type="button" class="btn" id="avail">Check rooms for the first window</button></div>
         <div id="result" style="margin-top:12px"></div>
       </form></div>`;
 
   const winsEl = document.getElementById("wins");
-  function addWindow(w = { day: meta.days[0], from_period: 10, to_period: 13 }) {
+  const days = meta.days || [];
+  function addWindow(w = { day: days[0], from_period: 10, to_period: 13 }) {
     const row = document.createElement("div");
     row.className = "row win";
-    row.innerHTML = `<div class="field"><select class="wd" aria-label="Day">${meta.days.map(d => `<option ${d === w.day ? "selected" : ""}>${d}</option>`).join("")}</select></div>
+    row.innerHTML = `<div class="field"><select class="wd" aria-label="Day">${days.map(d => `<option ${d === w.day ? "selected" : ""}>${d}</option>`).join("")}</select></div>
       <div class="field"><select class="wf" aria-label="From">${periodOpts(w.from_period)}</select></div>
       <div class="field"><select class="wt" aria-label="Until">${periodOpts(w.to_period)}</select></div>
       <button type="button" class="btn ghost small" aria-label="Remove window" style="margin-top:3px">${icon("x")}</button>`;

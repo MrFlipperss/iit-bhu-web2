@@ -24,7 +24,7 @@
       <h3 style="margin-top:32px">Demo accounts</h3>
       <div class="demo-list" id="demo">
         <button type="button" data-u="dean@cit.demo">Dean of Academics <span>Admin</span></button>
-        <button type="button" data-u="spectra@cit.demo">Spectra Core Team <span>Admin</span></button>
+        <button type="button" data-u="spectra@cit.demo">Spectra Core Team <span>Fest Organizer</span></button>
         <button type="button" data-u="coord.ece@cit.demo">ECE Coordinator <span>Department coordinator</span></button>
         <button type="button" data-u="f12@cit.demo">Dr. Amit Behera, F12 <span>Faculty</span></button>
         <button type="button" data-u="dramatics@cit.demo">Dramatics Society <span>Club</span></button>
@@ -48,7 +48,11 @@
 </div>
 <script src="/assets/js/app.js"></script>
 <script>
-document.querySelectorAll("#demo button").forEach(b => b.onclick = () => { document.getElementById("u").value = b.dataset.u; document.getElementById("p").focus(); });
+document.querySelectorAll("#demo button").forEach(b => b.onclick = () => { 
+  document.getElementById("u").value = b.dataset.u; 
+  document.getElementById("p").value = "Kian@2407"; 
+  document.getElementById("p").focus(); 
+});
 document.getElementById("f").onsubmit = async e => {
   e.preventDefault();
   const btn = document.getElementById("go");
@@ -56,10 +60,14 @@ document.getElementById("f").onsubmit = async e => {
   try {
     await CIT.busy(btn, "Logging in", () => CIT.api("auth/login.php", { username: document.getElementById("u").value.trim(), password: document.getElementById("p").value }));
     const next = new URLSearchParams(location.search).get("next");
-    location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard.html";
-  } catch (err) { document.getElementById("err").innerHTML = CIT.errorHtml(err); }
+    location.replace(next && next.startsWith("/") && !next.startsWith("//") ? next : "dashboard.html");
+  } catch (err) { 
+    document.getElementById("err").innerHTML = CIT.errorHtml(err); 
+  }
 };
-fetch("/api/auth/me.php", { credentials: "same-origin" }).then(r => r.ok && (location.href = "/dashboard.html"));
+if (CIT.getCurrentUser()) {
+  location.replace("dashboard.html");
+}
 </script>
 </body>
 </html>

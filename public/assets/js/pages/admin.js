@@ -4,7 +4,12 @@
   if (!user) return;
   const main = document.getElementById("main");
   if (user.role !== "admin") { main.innerHTML = `<div class="panel empty">Only Admins can open this page.</div>`; return; }
-  const [versions, s, audit] = await Promise.all([CIT.api("schedule/versions.php"), CIT.api("admin/settings.php"), CIT.api("admin/audit.php")]);
+  let versions, s, audit;
+  try { [versions, s, audit] = await Promise.all([CIT.api("schedule/versions.php"), CIT.api("admin/settings.php"), CIT.api("admin/audit.php")]); }
+  catch (e) { main.innerHTML = CIT.errorHtml(e); return; }
+  versions = Array.isArray(versions) ? versions : [];
+  s = s || { settings: {}, llm: { configured: false, provider: '', model: '' }, knowledge_chunks: 0, knowledge_embedded: 0, users: [] };
+  audit = audit || { audit: [] };
   const lastRepair = versions.find(v => v.kind === "repair" && v.status === "active") || versions.find(v => v.kind === "repair" && ["superseded", "active"].includes(v.status));
   main.innerHTML = `<div class="page-head"><div><h1>Admin</h1><div class="sub">Data, exports and settings. Every action here is in the audit log.</div></div></div>
     <div class="cols"><div class="stack">
@@ -15,9 +20,65 @@
           <td class="muted">${when(v.created_at)} ${esc(v.created_by || "")}</td>
           <td>${["validated", "superseded"].includes(v.status) && +v.hard_violation_count === 0 ? `<button class="btn small" data-activate="${v.id}">Make active</button>` : ""}</td></tr>`).join("")}</table></div></div>
       <div class="panel"><h2>Exports</h2><p class="sub">Built by the app from the stored timetable, in the exact starter-pack format. Commit these two files to <span class="mono">exports/</span>.</p>
-        <div class="actions"><a class="btn primary" href="/api/schedule/export.php">${icon("download")} schedule.json</a>
-          ${lastRepair ? `<a class="btn" href="/api/schedule/export.php?kind=after&version=${lastRepair.id}">${icon("download")} schedule_after.json (version ${lastRepair.id})</a>` : `<span class="muted">schedule_after.json appears after a repair is approved</span>`}
+        <div class="actions"><a class="btn primary" href="/exports/schedule.json" download="schedule.json">${icon("download")} schedule.json</a>
+          ${lastRepair ? `<a class="btn" href="/exports/schedule_after.json" download="schedule_after.json">${icon("download")} schedule_after.json</a>` : `<span class="muted">schedule_after.json appears after a repair is approved</span>`}
           <button class="btn ghost" id="saveExports">Also save on the server</button></div></div>
+      <div class="panel"><h2>Requests Pending Dean's Approval</h2>
+        <p class="sub">All Spectra room bookings and timetable changes submitted by non-admin users require Dean approval before affecting the live timetable.</p>
+        <div id="approvals-list"><div class="loading"><span class="spin"></span> Loading requests</div></div>
+      </div>
+      <div class="panel"><h2>Manual Admin Override</h2>
+        <p class="sub">Direct manual control to enforce room assignments, session reschedules, or cancellations with immediate audit logging.</p>
+        <form id="override-form">
+          <div class="field">
+            <label for="override-scope">Override Scope</label>
+            <select id="override-scope">
+              <option value="whole_semester">Option 1: Whole Semester</option>
+              <option value="window">Option 2: Time Window (Week / Day / Custom)</option>
+            </select>
+          </div>
+          <div class="field" id="window-select-field" style="display:none">
+            <label for="override-window">Window Duration</label>
+            <select id="override-window">
+              <option value="one_week">One Week (Spectra Fest Week 7)</option>
+              <option value="one_day">One Day (Single Date/Weekday)</option>
+              <option value="specific_periods">Specific Periods (e.g. Morning P1-P4)</option>
+            </select>
+          </div>
+          <div class="cols" style="gap:10px;margin-bottom:12px">
+            <div class="field" style="flex:1">
+              <label for="override-entity">Target Entity</label>
+              <select id="override-entity">
+                <option value="session">Course Session (e.g. MA101, CS201)</option>
+                <option value="room">Room / Hall (e.g. AUD, LH-1, CS-LAB-1)</option>
+                <option value="faculty">Faculty Member (e.g. F12, F19)</option>
+                <option value="booking">Spectra Booking Request (e.g. BR-01)</option>
+              </select>
+            </div>
+            <div class="field" style="flex:1">
+              <label for="override-id">Entity ID</label>
+              <input type="text" id="override-id" placeholder="e.g. LH-1 or CS201" required>
+            </div>
+          </div>
+          <div class="field">
+            <label for="override-action">Override Action</label>
+            <select id="override-action">
+              <option value="lock_room">Lock / Reserve Room Exclusively</option>
+              <option value="force_move">Force Reassign to Alternate Room</option>
+              <option value="mark_unavailable">Mark Forcefully Unavailable</option>
+              <option value="approve_bypass">Approve Booking with Priority Bypass</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="override-reason">Reason / Justification for Audit</label>
+            <input type="text" id="override-reason" placeholder="e.g. Dean order / Emergency lab maintenance" required>
+          </div>
+          <div class="actions">
+            <button type="submit" class="btn primary">Apply Manual Override</button>
+          </div>
+        </form>
+        <div id="override-list" style="margin-top:16px"></div>
+      </div>
       <div class="panel"><h2>Activity</h2><div class="table-wrap" style="max-height:360px;overflow-y:auto"><table>
         ${audit.audit.map(a => `<tr><td class="muted" style="white-space:nowrap">${when(a.created_at)}</td><td class="mono">${esc(a.action)}</td><td>${esc(a.display_name || "")}</td><td class="mono muted">${esc(a.entity_id || "")}</td></tr>`).join("")}</table></div></div>
     </div><div class="stack">
@@ -36,6 +97,106 @@
       <div class="panel"><h2>Demo accounts</h2><table>${s.users.map(u => `<tr><td class="mono" style="font-size:12px">${esc(u.username)}</td><td>${words(u.role)}</td></tr>`).join("")}</table>
         <p class="muted" style="font-size:12px;margin-top:8px">All use DEMO_PASSWORD from the server settings.</p></div>
     </div></div>`;
+
+  async function loadPendingApprovals() {
+    const el = document.getElementById("approvals-list");
+    try {
+      const res = await CIT.api("admin/pending_approvals.php");
+      const list = res.requests || [];
+      if (!list.length) {
+        el.innerHTML = `<p class="muted" style="font-size:13px">No pending user requests waiting for approval.</p>`;
+        return;
+      }
+      el.innerHTML = `<table>
+        <tr><th>ID</th><th>Request</th><th>Requester</th><th>Details</th><th>Actions</th></tr>
+        ${list.map(r => `<tr>
+          <td class="mono"><b>${esc(r.id)}</b></td>
+          <td><div><b>${esc(r.title)}</b></div><span class="sub">${esc(r.category || r.requested_category)}</span></td>
+          <td>${esc(r.requester)}</td>
+          <td class="sub">${esc(r.room_id || r.requested_room || 'Any Room')} · ${esc(r.day || 'THU')} P${r.start_period || 10}-P${r.end_period || 12}</td>
+          <td>
+            <div class="actions" style="margin:0">
+              <button class="btn small primary" data-approve="${esc(r.id)}">Approve</button>
+              <button class="btn small danger" data-reject="${esc(r.id)}">Reject</button>
+            </div>
+          </td>
+        </tr>`).join("")}
+      </table>`;
+
+      el.querySelectorAll("[data-approve]").forEach(btn => {
+        btn.onclick = async () => {
+          await CIT.api("admin/decide_approval.php", { id: btn.dataset.approve, action: "approve" });
+          CIT.toast("Request approved and applied to the live timetable!");
+          loadPendingApprovals();
+        };
+      });
+
+      el.querySelectorAll("[data-reject]").forEach(btn => {
+        btn.onclick = async () => {
+          await CIT.api("admin/decide_approval.php", { id: btn.dataset.reject, action: "reject" });
+          CIT.toast("Request rejected by Dean of Academics");
+          loadPendingApprovals();
+        };
+      });
+    } catch (e) {
+      el.innerHTML = CIT.errorHtml(e);
+    }
+  }
+
+  loadPendingApprovals();
+
+  const scopeEl = document.getElementById("override-scope");
+  const winFieldEl = document.getElementById("window-select-field");
+  scopeEl.onchange = () => {
+    winFieldEl.style.display = scopeEl.value === "window" ? "block" : "none";
+  };
+
+  async function loadOverrides() {
+    const listEl = document.getElementById("override-list");
+    try {
+      const res = await CIT.api("admin/get_overrides.php");
+      const ovs = res.overrides || [];
+      if (!ovs.length) {
+        listEl.innerHTML = `<p class="muted" style="font-size:12px">No active manual overrides registered.</p>`;
+        return;
+      }
+      listEl.innerHTML = `<table>
+        <tr><th>Scope</th><th>Target</th><th>Action</th><th>Reason</th><th>By</th></tr>
+        ${ovs.map(o => `<tr>
+          <td><span class="chip">${esc(o.scope === 'whole_semester' ? 'Whole Semester' : o.window_type)}</span></td>
+          <td class="mono">${esc(o.target_entity)}: ${esc(o.target_id)}</td>
+          <td><b>${esc(o.action)}</b></td>
+          <td class="sub">${esc(o.reason)}</td>
+          <td class="muted">${esc(o.applied_by)}</td>
+        </tr>`).join("")}
+      </table>`;
+    } catch (e) {
+      listEl.innerHTML = CIT.errorHtml(e);
+    }
+  }
+
+  document.getElementById("override-form").onsubmit = async ev => {
+    ev.preventDefault();
+    const payload = {
+      scope: document.getElementById("override-scope").value,
+      window_type: document.getElementById("override-window").value,
+      target_entity: document.getElementById("override-entity").value,
+      target_id: document.getElementById("override-id").value.trim(),
+      action: document.getElementById("override-action").value,
+      reason: document.getElementById("override-reason").value.trim()
+    };
+    try {
+      await CIT.api("admin/override.php", payload);
+      CIT.toast("Manual override successfully logged and applied");
+      document.getElementById("override-id").value = "";
+      document.getElementById("override-reason").value = "";
+      loadOverrides();
+    } catch (err) {
+      CIT.toast(err.message, true);
+    }
+  };
+
+  loadOverrides();
 
   main.querySelectorAll("[data-activate]").forEach(b => (b.onclick = async () => {
     try { await CIT.busy(b, "Activating", () => CIT.api("schedule/versions.php", { version_id: +b.dataset.activate })); location.reload(); } catch (e) { CIT.toast(e.message, true); }
