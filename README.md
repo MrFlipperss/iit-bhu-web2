@@ -5,7 +5,7 @@ for 189 sessions, plans 41 midsem exams, decides all Spectra (Week 7) room reque
 rules, and repairs the timetable after faculty leave, room closures or new sessions while moving as few
 sessions as possible. Requests can be typed in plain English or Hinglish, and every decision comes with its reason.
 
-**Live app:** `https://<your-project>.web.app`  ·  **Video:** `<link>`
+**Live app:** [web-hackathon-b7b1a.web.app](https://web-hackathon-b7b1a.web.app/) (target from the 31 Oct 2026 report; current deployment/API status is unverified)  ·  **Walkthrough:** [five-minute demo script](docs/DEMO_SCRIPT.md) (recording link pending)
 
 ## Results on the starter dataset (official `validator.py`)
 
@@ -27,7 +27,7 @@ Password for all accounts: `<DEMO_PASSWORD you set>`
 | `dean@cit.demo` | Admin | Office of the Dean of Academics |
 | `spectra@cit.demo` | Admin | Spectra Core Team. Owns BR-01 and others, so the Dean must review those (no self-approval) |
 | `coord.ece@cit.demo` | Department coordinator | ECE Department |
-| `f12@cit.demo` | Faculty | Dr. Amit Behera (F12): can report unavailability |
+| `f12@cit.demo` | Faculty | Dr. Amit Behera (F12): can report unavailability and request an extra or moved session |
 | `dramatics@cit.demo` | Club | Dramatics Society |
 
 Admin → **Reset demo data** restores the starter pack. Then use **Generate** on the Overview.
@@ -50,7 +50,7 @@ MySQL 8          engine/cli.py          LLM + embeddings API (optional)
 ```
 
 - **Engine.** A fast constructive search plus min-conflicts repair finds a valid timetable in about a second. CP-SAT (OR-Tools) then improves it within the remaining budget, and the better result by the validator's own soft score is kept. Hard rules match the validator exactly. Repair uses the same model with a cost of 1,000 per moved session, which is the validator's definition of a move.
-- **Bookings.** Requests are decided in strict priority order (role-capped category, then `submitted_at`), so priority inversions cannot happen. Only an approved institute event may displace a class, and the class is moved, never dropped.
+- **Bookings.** Requests are decided in strict priority order (role-capped category, then `submitted_at`), so priority inversions cannot happen. Admin can change the four event-category priorities without resetting the dataset; the starter-pack discrepancy and scoring rationale are documented in [docs/STARTER_PACK_VERIFIED_DELTA.md](docs/STARTER_PACK_VERIFIED_DELTA.md). Only an approved institute event may displace a class, and the class is moved, never dropped.
 - **Validator.** `validator/validator.py` is the official file, unmodified. Every generated version, export and approval is checked with it, and the reports are stored in `validation_runs`.
 - **AI.** Plain text goes to an editable form with visible assumptions and follow-up questions. A built-in English/Hinglish parser works with no API key. The chat answers live questions from SQL with the user's permissions, and rules questions through RAG with cited sources.
 - **RAG.** Sources are `knowledge/*.md`, the starter README and entity cards. Chunks are stored in MySQL (`kb_chunks`) and searched by cosine similarity when embeddings are configured, or MySQL FULLTEXT otherwise. Live facts never come from embeddings.

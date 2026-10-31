@@ -72,6 +72,7 @@ module zips contain the same file. Install them in this order:
 | `GET /api/schedule/versions.php` / `POST {version_id}` | any / Admin | | list / activate (only with 0 hard violations) |
 | `GET /api/schedule/export.php?kind=schedule\|after&version=` | any | | downloads the JSON file |
 | `POST /api/schedule/export.php` | Admin | `{kind: schedule\|after, version?}` | saves the export in `exports/` (CSRF protected) |
+| `POST /api/admin/settings.php` | Admin | `{priority_order: [bookable categories...]}` | creates a dataset version, recalculates active bookings, and marks pending repairs stale |
 | `GET\|POST /api/schedule/validate.php` | any / Admin | | latest or new validator report |
 | `GET /api/schedule/explain.php?session_id=\|request_id=` | any | | `{text, grid[], rooms_that_fit}` |
 
@@ -112,7 +113,7 @@ module zips contain the same file. Install them in this order:
 | `POST /api/bookings/cancel.php` | owner / Admin | `{id, note?}` | request |
 | `POST /api/bookings/review.php` | Admin or matching department coordinator, never on own request | `{id, action: confirm\|reject, reason?}` | request |
 | `GET /api/changes/sessions.php` | Department coordinator | | currently scheduled sessions in their department |
-| `POST /api/changes/request.php` | Faculty / department coordinator | faculty `{text, preview?: bool, changes?: [...]}`; coordinator `{session_id, reason}` | pending repair proposal for Admin review |
+| `POST /api/changes/request.php` | Faculty / department coordinator | Faculty `{text, preview?: bool, changes?: [...]}` or `{action: extra\|move, session_id, reason, day?, period?}`; coordinator `{session_id, reason}` | pending repair proposal for Admin review |
 | `GET /api/bookings/availability.php?day&from&to&attendance&types&needs` | any | | rooms with fits / free / taken_by |
 | `GET /api/exams/get.php?group=` | any | | exams with rooms and seats |
 

@@ -51,6 +51,7 @@ function cit_chat_route(string $msg, array $e): string
     $t = mb_strtolower($msg);
     if (preg_match('/\b(why|kyun|kyon|kyu|reason|explain)\b/u', $t) && ($e['session'] || $e['request'])) return 'explain';
     if ($e['request'] || preg_match('/\b(my (booking|request)s?|status of my|meri booking|mera request)\b/u', $t)) return 'booking_status';
+    if (preg_match('/\b(extra|additional)\s+(session|class|lecture|lab)s?\b|\b(add|move|reschedule)\b.{0,30}\b(session|class|lecture|lab)s?\b|\b(session|class|lecture|lab)\b.{0,30}\b(move|reschedule|extra|additional)\b/u', $t)) return 'change_request';
     if (preg_match("/\b(can'?t teach|cannot teach|unavailable|on leave|leave on|not available to teach|nahi padha)\b/u", $t)) return 'change_request';
     if (preg_match('/\b(free|available|khali|vacant|empty|occupied|busy|kaun sa room)\b/u', $t) && ($e['room'] || $e['day'] || preg_match('/\b(room|hall|lab)s?\b/u', $t))) return 'availability';
     if (preg_match('/\b(book|reserve|need a|need an|want a|chahiye|can i get)\b/u', $t) && preg_match('/\b(room|hall|lab|auditorium|venue|oat|sh-\d|lh-\d)\b/u', $t)) return 'booking_request';
@@ -202,8 +203,12 @@ function cit_chat(PDO $db, array $user, string $msg, array $history): array
             return ['reply' => $reply, 'data' => ['parsed' => $p], 'action' => ['type' => 'open_booking_form', 'parsed' => $p]];
         })(),
         'change_request' => ['reply' => $user['role'] === 'faculty'
-            ? 'You can report times you cannot teach on the Reschedule page. I have copied your message there. An Admin approves the change before anything moves.'
-            : 'Only faculty can report teaching unavailability. Admins can upload a change file on the Reschedule page.',
+            ? (preg_match('/\b(extra|additional)\s+(session|class|lecture|lab)s?\b|\b(add|move|reschedule)\b.{0,30}\b(session|class|lecture|lab)s?\b|\b(session|class|lecture|lab)\b.{0,30}\b(move|reschedule|extra|additional)\b/u', mb_strtolower($msg))
+                ? 'You can request an extra session or move one of your sessions on the Reschedule page. I have copied your request there; an Admin reviews the proposal before the timetable changes.'
+                : 'You can report times you cannot teach on the Reschedule page. I have copied your message there. An Admin approves the change before anything moves.')
+            : (preg_match('/\b(extra|additional)\s+(session|class|lecture|lab)s?\b|\b(add|move|reschedule)\b.{0,30}\b(session|class|lecture|lab)s?\b|\b(session|class|lecture|lab)\b.{0,30}\b(move|reschedule|extra|additional)\b/u', mb_strtolower($msg))
+                ? 'Only Faculty can request extra or moved sessions. Admins can review these proposals on the Reschedule page.'
+                : 'Only Faculty can report teaching unavailability. Admins can upload a change file on the Reschedule page.'),
             'data' => null, 'action' => ['type' => 'open_change_form', 'text' => $msg]],
         default => cit_rag_answer($db, $msg, $user, $history),
     };

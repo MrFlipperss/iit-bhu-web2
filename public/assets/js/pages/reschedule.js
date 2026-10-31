@@ -8,7 +8,7 @@
   const isCoordinator = user.role === "department_coordinator";
   if (!isAdmin && !isCoordinator && user.role !== "faculty") { main.innerHTML = `<div class="panel empty">Only Admins, department coordinators, and faculty use this page.</div>`; return; }
 
-  main.innerHTML = `<div class="page-head"><div><h1>${isAdmin ? "Reschedule" : isCoordinator ? "Request a department session change" : "Report times you can't teach"}</h1>
+  main.innerHTML = `<div class="page-head"><div><h1>${isAdmin ? "Reschedule" : isCoordinator ? "Request a department session change" : "Session changes and unavailability"}</h1>
       <div class="sub">${isAdmin ? "Changes are permanent. The repair moves as few sessions as possible and nothing changes until you approve it." : isCoordinator ? `Request removal of a scheduled session in ${esc(user.department || "your department")}. An Admin reviews the proposed timetable before anything changes.` : "This becomes a proposal. An Admin approves it before anything in the timetable moves."}</div></div></div>
     <div class="cols"><div class="stack" id="left"></div><div class="stack" id="right"></div></div>`;
   const left = document.getElementById("left"), right = document.getElementById("right");
@@ -69,7 +69,62 @@
     left.innerHTML = `<div class="panel"><h2>When can't you teach?</h2>
       <textarea id="ctext" rows="3" placeholder="e.g. I can't teach on Wednesday mornings for the rest of the semester">${esc(qs.get("text") || "")}</textarea>
       <div class="actions" style="margin-top:8px"><button class="btn" id="preview">Check</button></div><div id="cout" style="margin-top:12px"></div></div>
+      <div class="panel"><h2>Request an extra or moved session</h2>
+        <p class="sub">Choose one of your scheduled sessions as a template. An extra session adds another meeting; a move replaces the selected session. An Admin reviews every proposal before it changes the timetable.</p>
+        <div class="field"><label for="facultyAction">Request</label><select id="facultyAction"><option value="extra">Add an extra session</option><option value="move">Move this session</option></select></div>
+        <div class="field"><label for="facultySession">Your scheduled session</label><select id="facultySession"><option value="">Loading your sessions…</option></select></div>
+        <div class="field"><label for="facultyDay">Requested day</label><select id="facultyDay"><option value="">No preference (extra session only)</option>${["MON", "TUE", "WED", "THU", "FRI"].map(d => `<option value="${d}">${d}</option>`).join("")}</select></div>
+        <div class="field"><label for="facultyPeriod">Requested period</label><select id="facultyPeriod"><option value="">No preference (extra session only)</option>${Array.from({ length: 9 }, (_, i) => i + 1).map(p => `<option value="${p}">P${p}</option>`).join("")}</select></div>
+        <div class="field"><label for="facultyReason">Reason</label><textarea id="facultyReason" rows="2" maxlength="500" placeholder="Explain why the extra or moved session is needed"></textarea></div>
+        <button class="btn primary" id="submitFacultyChange">Send for Admin review</button><div id="fchangeout" style="margin-top:12px"></div></div>
       <div class="panel" id="detail"><p class="sub">Your reports and their status appear on the right.</p></div>`;
+    const facultySessions = document.getElementById("facultySession");
+    const facultyAction = document.getElementById("facultyAction");
+    const facultyDay = document.getElementById("facultyDay");
+    const facultyPeriod = document.getElementById("facultyPeriod");
+    const assistantText = qs.get("text") || "";
+    const assistantSessionRequest = /\b(extra|additional)\s+(session|class|lecture|lab)s?\b|\b(add|move|reschedule)\b.{0,30}\b(session|class|lecture|lab)s?\b|\b(session|class|lecture|lab)\b.{0,30}\b(move|reschedule|extra|additional)\b/i.test(assistantText);
+    if (/\b(move|reschedule|rescheduling)\b/i.test(assistantText)) facultyAction.value = "move";
+    if (assistantSessionRequest) document.getElementById("facultyReason").value = assistantText;
+    facultyAction.onchange = () => {
+      const moving = facultyAction.value === "move";
+      facultyDay.required = moving;
+      facultyPeriod.required = moving;
+      facultyDay.options[0].textContent = moving ? "Choose a day" : "No preference";
+      facultyPeriod.options[0].textContent = moving ? "Choose a period" : "No preference";
+    };
+    facultyAction.onchange();
+    try {
+      const result = await CIT.api("changes/sessions.php");
+      facultySessions.innerHTML = result.sessions.length
+        ? `<option value="">Choose your session</option>${result.sessions.map(s => `<option value="${esc(s.session_id)}">${esc(s.session_id)} · ${esc(s.title)} · ${esc(s.day)} P${s.start_period}–P${+s.start_period + +s.duration - 1} · ${esc(s.room_id)}</option>`).join("")}`
+        : `<option value="">No scheduled sessions found for your account</option>`;
+    } catch (err) {
+      facultySessions.innerHTML = `<option value="">Could not load your sessions</option>`;
+      document.getElementById("fchangeout").innerHTML = CIT.errorHtml(err);
+    }
+    document.getElementById("submitFacultyChange").onclick = async ev => {
+      const out = document.getElementById("fchangeout");
+      const action = facultyAction.value;
+      const session_id = facultySessions.value;
+      const day = facultyDay.value;
+      const period = facultyPeriod.value;
+      const reason = document.getElementById("facultyReason").value.trim();
+      if (!session_id || !reason || (action === "move" && (!day || !period)) || (!!day !== !!period)) {
+        out.innerHTML = `<div class="callout bad">Choose your session, give a reason, and choose both a day and period for a move.</div>`;
+        return;
+      }
+      const body = { action, session_id, reason };
+      if (day && period) { body.day = day; body.period = +period; }
+      try {
+        const r = await CIT.busy(ev.currentTarget, "Preparing proposal", () => CIT.api("changes/request.php", body));
+        out.innerHTML = r.status === "pending"
+          ? `<div class="callout ok">Sent for Admin review. ${r.summary.sessions_moved} existing session(s) would move.</div>`
+          : `<div class="callout bad">No valid timetable fits this request. An Admin can review the details.</div>`;
+        await list();
+        if (r.proposal_id) show(r.proposal_id);
+      } catch (err) { out.innerHTML = CIT.errorHtml(err); }
+    };
     document.getElementById("preview").onclick = async ev => {
       const out = document.getElementById("cout");
       try {

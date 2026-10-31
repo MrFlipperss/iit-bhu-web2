@@ -9,6 +9,7 @@
   catch (e) { main.innerHTML = CIT.errorHtml(e); return; }
   versions = Array.isArray(versions) ? versions : [];
   s = s || { settings: {}, llm: { configured: false, provider: '', model: '' }, knowledge_chunks: 0, knowledge_embedded: 0, users: [] };
+  s.priority_order = Array.isArray(s.priority_order) ? s.priority_order : ["institute_event", "guest_lecture", "department_event", "club_event"];
   audit = audit || { audit: [] };
   const lastRepair = versions.find(v => v.kind === "repair" && v.status === "active") || versions.find(v => v.kind === "repair" && ["superseded", "active"].includes(v.status));
   main.innerHTML = `<div class="page-head"><div><h1>Admin</h1><div class="sub">Data, exports and settings. Every action here is in the audit log.</div></div></div>
@@ -26,6 +27,11 @@
       <div class="panel"><h2>Activity</h2><div class="table-wrap" style="max-height:360px;overflow-y:auto"><table>
         ${audit.audit.map(a => `<tr><td class="muted" style="white-space:nowrap">${when(a.created_at)}</td><td class="mono">${esc(a.action)}</td><td>${esc(a.display_name || "")}</td><td class="mono muted">${esc(a.entity_id || "")}</td></tr>`).join("")}</table></div></div>
     </div><div class="stack">
+      <form class="panel" id="priorities"><h2>Spectra booking priority</h2>
+        <p class="sub">Set the order for event requests. Exams and regular classes remain ahead of these event categories. Saving creates a dataset version and recalculates current booking decisions without resetting schedules or requests.</p>
+        <div class="stack" style="gap:8px">${s.priority_order.map((code, i) => `<div class="actions" style="justify-content:space-between"><label for="rank-${esc(code)}">${{ institute_event: "Institute event", guest_lecture: "Guest lecture", department_event: "Department event", club_event: "Club event" }[code] || words(code)}</label>
+          <input id="rank-${esc(code)}" type="number" min="1" max="${s.priority_order.length}" value="${i + 1}" data-priority="${esc(code)}" aria-label="Priority for ${esc(words(code))}" style="width:82px"></div>`).join("")}</div>
+        <div class="actions" style="margin-top:12px"><button class="btn primary">Save priority order</button></div></form>
       <form class="panel" id="settings"><h2>Settings</h2>
         <div class="field"><label for="team">Team name in exports</label><input type="text" id="team" value="${esc(s.settings.team_name || "")}"></div>
         <div class="field"><label for="ref">"Today" in Spectra week <span class="muted">("kal" means the day after)</span></label>
@@ -45,6 +51,23 @@
   main.querySelectorAll("[data-activate]").forEach(b => (b.onclick = async () => {
     try { await CIT.busy(b, "Activating", () => CIT.api("schedule/versions.php", { version_id: +b.dataset.activate })); location.reload(); } catch (e) { CIT.toast(e.message, true); }
   }));
+  document.getElementById("priorities").onsubmit = async e => {
+    e.preventDefault();
+    const fields = [...document.querySelectorAll("[data-priority]")];
+    const ranked = fields.map(input => ({ code: input.dataset.priority, rank: Number(input.value) }));
+    const ranks = ranked.map(x => x.rank);
+    if (ranks.some(n => !Number.isInteger(n) || n < 1 || n > ranked.length) || new Set(ranks).size !== ranks.length) {
+      CIT.toast(`Use each priority number from 1 to ${ranked.length} exactly once`, true);
+      return;
+    }
+    const priority_order = ranked.sort((a, b) => a.rank - b.rank).map(x => x.code);
+    const button = e.currentTarget.querySelector("button[type=submit],button:not([type])");
+    try {
+      const r = await CIT.busy(button, "Saving and recalculating", () => CIT.api("admin/settings.php", { priority_order }));
+      CIT.toast(r.priority_changed ? "Priority order saved; current booking decisions were recalculated" : "Priority order is unchanged");
+      setTimeout(() => location.reload(), 700);
+    } catch (err) { CIT.toast(err.message, true); }
+  };
   document.getElementById("saveExports").onclick = async ev => {
     let scheduleSaved = false;
     try {
