@@ -1,177 +1,119 @@
-# Crunch Week starter pack
+# CIT Campus Scheduling & Venue Management
 
-Everything you need to build against the Chilika Institute of Technology (CIT) dataset. Read the problem statement first; this file explains the data and the export format.
+One web platform for Chilika Institute of Technology's Crunch Week. It builds a clash-free weekly timetable
+for 189 sessions, plans 41 midsem exams, decides all Spectra (Week 7) room requests by the published priority
+rules, and repairs the timetable after faculty leave, room closures or new sessions while moving as few
+sessions as possible. Requests can be typed in plain English or Hinglish, and every decision comes with its reason.
 
-```
-data/cit_public.json          the full dataset (one file, everything in it)
-data/csv/*.csv                the same data as spreadsheets, for a quick look
-validator.py                  the official validator (Python 3.8+, no installs)
-examples/schedule.example.json   shape of the file you export (not a real solution)
-examples/sample_disruption.json  practice disruption, same format as the live one
-examples/sample_requests.md      plain-language requests to test your AI layer
-```
+**Live app:** `https://<your-project>.web.app`  ·  **Video:** `<link>`
 
-Your app should read this file and change files in the format below, not hard-code anything from them. Judges will reset your app, generate the timetable themselves and apply change files of their own.
+## Results on the starter dataset (official `validator.py`)
 
-## Quick facts about the dataset
+| Check | Result |
+|---|---|
+| `schedule.json` hard violations | 0 |
+| Soft penalty | about 20 after Generate (CPU dependent; **Improve** lowers it further) |
+| Spectra booking score | 67 / 70: BR-09 cannot fit (1,200 people, largest venue 800) and BR-17's window ends past P13, so it can only be an alternative |
+| Priority inversions | 0 |
+| Exam soft penalty | 0 |
+| `schedule_after.json` (sample disruption) | 0 hard violations; only the sessions the changes touch are moved, and room-only moves are preferred |
 
-| Thing | Count |
-| --- | --- |
-| Rooms | 27 (classrooms, lecture halls, auditorium, seminar halls, open-air theatre, 7 labs) |
-| Faculty | 40 |
-| Student groups | 14 (Year 1 sections A to D, Year 2 and Year 3 for 5 branches) |
-| Courses | 62 |
-| Sessions to schedule | 189 (243 teaching hours a week) |
-| Spectra week booking requests | 25 (one of them is cancelled) |
-| Midsem exams | 41 |
+## Demo accounts
 
-A timetable with zero hard violations exists for this dataset. We checked.
+Password for all accounts: `<DEMO_PASSWORD you set>`
 
-## Time model
+| Account | Role | Notes |
+|---|---|---|
+| `dean@cit.demo` | Admin | Office of the Dean of Academics |
+| `spectra@cit.demo` | Admin | Spectra Core Team. Owns BR-01 and others, so the Dean must review those (no self-approval) |
+| `coord.ece@cit.demo` | Department coordinator | ECE Department |
+| `f12@cit.demo` | Faculty | Dr. Amit Behera (F12): can report unavailability |
+| `dramatics@cit.demo` | Club | Dramatics Society |
 
-- Days: `MON` to `FRI`.
-- Periods `1` to `9` are teaching periods, one hour each: P1 08:00, P2 09:00 ... P5 12:00, lunch 13:00 to 14:00, P6 14:00 ... P9 17:00.
-- Periods `10` to `13` (18:00 to 22:00) are for events only.
-- A session with `duration` d placed at `start_period` p occupies p, p+1, ... p+d-1. It may not span P5 and P6 (lunch).
-- Labs (`kind: "lab"`, 3 hours) start only at P2 or P6.
+Admin → **Reset demo data** restores the starter pack. Then use **Generate** on the Overview.
 
-## The dataset, field by field
-
-### rooms
-`id`, `name`, `building`, `type`, `capacity`, `features`, `accessible`, `allowed_uses`.
-
-Room `type` is one of `classroom`, `lecture_hall`, `auditorium`, `seminar_hall`, `outdoor`, `lab_cs`, `lab_elec`, `lab_phy`, `workshop`, `lab_civil`. `allowed_uses` says whether a room can take lectures, tutorials, labs, exams or events. Seminar halls and the open-air theatre never take regular classes.
-
-### room_unavailability
-`room_id`, `day`, `periods`, `reason`. The room can't be used at those times.
-
-### faculty
-`id`, `name`, `department`, `max_hours_per_day` (hard limit), `needs_accessible`, `unavailable` (list of `day` + `periods`, hard), `preferences` (soft).
-
-A preference looks like `{"type": "avoid", "days": [...], "periods": [...], "note": "..."}`. Each hour a faculty member teaches inside an avoided day and period costs 2 points (S1).
-
-### student_groups
-`id`, `name`, `year`, `department`, `size`, `needs_accessible`.
-
-### courses
-Reference information: `lecture_hours`, `tutorial_hours`, `lab_blocks` per week. You don't schedule courses; you schedule sessions.
-
-### sessions — the thing you schedule
-```json
-{
-  "id": "MA101-AB-L1",
-  "course_id": "MA101",
-  "kind": "lecture",               // lecture | tutorial | lab
-  "groups": ["Y1-A", "Y1-B"],      // every group that must attend
-  "faculty_id": "F19",
-  "size": 180,                     // students attending
-  "duration": 1,                   // periods
-  "room_types": ["classroom", "lecture_hall", "auditorium"],
-  "needs_accessible": false,
-  "basket_slot": null,             // e.g. "OEB-1" for open electives
-  "fixed_slot": null               // e.g. {"day": "THU", "start_period": 6} = must go exactly there
-}
-```
-Each session needs exactly one `day`, `start_period` and `room_id`. Faculty are already assigned.
-
-**Elective baskets.** Year 3 students each take one of three open electives (OE301, OE302, OE303). The three courses run in parallel: every session with the same `basket_slot` must be at the same day and period, in different rooms. Their `groups` lists all Year 3 groups because each group has students in all three. Sessions in the same basket slot don't clash with each other for groups; they do clash with everything else those groups have.
-
-### booking_requests — Spectra week (Week 7)
-```json
-{
-  "id": "BR-07",
-  "submitted_at": "2027-01-26T09:45:00+05:30",
-  "requester": "Dramatics Society",
-  "role": "club",                         // admin | department_coordinator | faculty | club
-  "requested_category": "club_event",
-  "title": "Stage play: Andha Yug",
-  "attendance": 130,
-  "duration_periods": 3,
-  "windows": [{"day": "THU", "from_period": 10, "to_period": 12}],
-  "room_types": ["seminar_hall", "auditorium"],
-  "needs": ["stage", "pa_system"],        // "accessible" means the room must be accessible
-  "requested_room": "SH-1",               // a wish, may be null, may not even exist
-  "mandatory_for_groups": [],             // these groups must be free
-  "series_id": null,
-  "raw_text": "Dramatics needs SH-1 Thursday 6 to 9 pm ..."
-}
-```
-A booking must fit fully inside one window to be approved. `raw_text` is the original message, so it doubles as test input for your plain-language parser.
-
-**Category is capped by role.** `role_category_cap` in the dataset says the highest category each role may claim. A club asking for `institute_event` is still a `club_event`. Priority order is in `priority_order`; ties go to the earlier `submitted_at`.
-
-**cancellations** lists requests withdrawn after submission. Never approve those.
-
-### exams
-`id`, `course_ids`, `groups`, `size`, `duration_hours`. Exam week is `MON` to `SAT` with sessions `AM` (09:30 to 11:30) and `PM` (14:00 to 16:00), in `calendar.exam_week`. Rooms seat half their capacity during exams; an exam may use several rooms.
-
-## What you export: schedule.json
-
-```json
-{
-  "team": "Your team name",
-  "dataset_id": "cit-public-v1",
-  "sessions": [
-    {"session_id": "MA101-AB-L1", "day": "MON", "start_period": 2, "room_id": "LH-1"}
-  ],
-  "fest_week": {
-    "bookings": [
-      {"request_id": "BR-01", "status": "approved", "day": "MON",
-       "start_period": 4, "end_period": 5, "room_id": "AUD", "reason": "Institute event"},
-      {"request_id": "BR-09", "status": "rejected", "reason": "No venue seats 1,200"},
-      {"request_id": "BR-07", "status": "alternative_offered", "day": "THU",
-       "start_period": 10, "end_period": 12, "room_id": "AUD", "reason": "SH-1 taken by an earlier request"}
-    ],
-    "session_overrides": [
-      {"session_id": "ID101-ALL-L1", "day": "WED", "start_period": 4, "room_id": "AUD", "displaced_by": "BR-01"}
-    ]
-  },
-  "exams": [
-    {"exam_id": "EX-MA101", "day": "MON", "session": "AM", "rooms": ["AUD", "LH-1", "LH-2"]}
-  ]
-}
-```
-
-- `end_period` is inclusive.
-- `status` is `approved`, `rejected` or `alternative_offered`. Rejections and alternatives need a `reason`. An alternative may sit outside the requested window; it is half-scored.
-- `session_overrides` move a session for Week 7 only. Only an approved institute event may displace a regular session, and the session must be moved, not dropped.
-- `exams` is required in `schedule.json`. A missing exam schedule counts every exam as unscheduled. In `schedule_after.json` (after a disruption) it's optional.
-
-## Running the validator
+## Architecture
 
 ```
-python validator.py --data data/cit_public.json --schedule schedule.json
-python validator.py --data data/cit_public.json --schedule schedule.json --json report.json
+Browser (HTML, CSS, vanilla JS)          Firebase Hosting serves public/ and forwards /api/** to Cloud Run
+        │ fetch, JSON, cookie "__session", CSRF header
+        ▼
+PHP 8.3 on Apache (Cloud Run)            routing, sessions, roles, validation, audit, orchestration
+   │                │                     │
+   ▼                ▼                     ▼
+MySQL 8          engine/cli.py          LLM + embeddings API (optional)
+(versions,       Python 3 + OR-Tools     parse text, route intents, phrase RAG answers;
+ bookings,       timetable, exams,       never decides validity, priority or approval
+ proposals,      bookings, repair,
+ RAG chunks,     explain; imports the
+ sessions)       untouched validator.py
 ```
 
-Checking a change: apply `examples/sample_disruption.json` in your app, export the repaired timetable, then
+- **Engine.** A fast constructive search plus min-conflicts repair finds a valid timetable in about a second. CP-SAT (OR-Tools) then improves it within the remaining budget, and the better result by the validator's own soft score is kept. Hard rules match the validator exactly. Repair uses the same model with a cost of 1,000 per moved session, which is the validator's definition of a move.
+- **Bookings.** Requests are decided in strict priority order (role-capped category, then `submitted_at`), so priority inversions cannot happen. Only an approved institute event may displace a class, and the class is moved, never dropped.
+- **Validator.** `validator/validator.py` is the official file, unmodified. Every generated version, export and approval is checked with it, and the reports are stored in `validation_runs`.
+- **AI.** Plain text goes to an editable form with visible assumptions and follow-up questions. A built-in English/Hinglish parser works with no API key. The chat answers live questions from SQL with the user's permissions, and rules questions through RAG with cited sources.
+- **RAG.** Sources are `knowledge/*.md`, the starter README and entity cards. Chunks are stored in MySQL (`kb_chunks`) and searched by cosine similarity when embeddings are configured, or MySQL FULLTEXT otherwise. Live facts never come from embeddings.
+
+## Run it locally
+
+**Docker (recommended):**
+```bash
+cp .env.example .env            # set DEMO_PASSWORD (8+ characters), optionally the LLM keys
+docker compose up --build       # http://localhost:8080 . The first start builds the database
+```
+
+**Without Docker** (PHP 8.2+ with pdo_mysql and curl, MySQL 8, Python 3.9+):
+```bash
+python3 -m venv .venv && .venv/bin/pip install ortools==9.15.6755
+cp .env.example .env            # DB_*, DEMO_PASSWORD, PYTHON_BIN=.venv/bin/python
+php database/reset.php && php rag/ingest.php
+php -S localhost:8000 -t public dev/router.php
+```
+
+## Exports
+
+Admin → **Exports** downloads `schedule.json` and, after an approved repair, `schedule_after.json`. Both are built by
+the app from the stored timetable. Commit them to `exports/` and check them with:
+```bash
+python validator/validator.py --data data/starter/cit_public.json --schedule exports/schedule.json
+python validator/validator.py --data data/starter/cit_public.json --schedule exports/schedule_after.json \
+       --disruption data/starter/examples/sample_disruption.json --baseline exports/schedule.json
+```
+
+## Tests
+
+```bash
+CIT_ALLOW_DESTRUCTIVE_TESTS=1 php database/tests/test_db.php      # schema, lossless import, constraints (wipes the DB)
+.venv/bin/python -m unittest discover -s engine/tests              # engine against the official validator
+python3 tests/api_smoke.py http://localhost:8000 <DEMO_PASSWORD> --reset   # 47 end-to-end checks over HTTP
+```
+
+## Deployment
+
+Firebase Hosting serves the pages, Cloud Run runs this Docker image, and the database is Cloud SQL (MySQL 8) or any
+managed MySQL 8. The full steps are in [docs/DEPLOY_FIREBASE.md](docs/DEPLOY_FIREBASE.md).
+
+## Repository layout
 
 ```
-python validator.py --data data/cit_public.json --schedule schedule_after.json \
-                    --disruption examples/sample_disruption.json --baseline schedule.json
+public/      pages, CSS, browser JS (the only web root)
+api/         PHP endpoints (one file per endpoint, mapped to /api)
+includes/    PHP libraries: db, auth, Python bridge, stores, AI, RAG, chat
+engine/      Python engine: timetable, greedy, bookings, exams, repair, explain, cli
+validator/   official validator.py (untouched)
+data/starter the starter pack (canonical input)
+database/    schema.sql, reset, tests
+knowledge/   RAG documents        prompts/  LLM prompts        rag/  ingest CLI
+docker/      Apache, PHP, entrypoint      docs/  guides and contracts
 ```
 
-It prints hard violations by rule, the soft penalty (S1 to S6), the booking score, priority inversions (you rejected someone who should have won a room), and how many sessions moved.
+## Known limitations
 
-### Disruption file format
-```json
-{"changes": [
-  {"type": "faculty_unavailable", "faculty_id": "F07", "days": ["MON"], "periods": [1,2,3,4,5,6,7,8,9], "reason": "..."},
-  {"type": "room_unavailable", "room_id": "CR-102", "days": ["MON","TUE"], "periods": [1,2,3], "reason": "..."},
-  {"type": "add_faculty", "faculty": { ...same shape as a faculty entry... }},
-  {"type": "add_session", "session": { ...same shape as a session, may have fixed_slot... }},
-  {"type": "remove_session", "session_id": "HS201-H2-L2"}
-]}
-```
-Changes are permanent: they hold for every week after they're applied.
+- Firebase Hosting ends requests to Cloud Run after 60 seconds, so Generate runs within about 35 seconds. Soft penalties depend on the CPU; **Improve** spends another pass from the current timetable and never makes it worse.
+- An Admin's manual rejection of a booking hands the room to the next request. If that request has lower priority, the validator reports a priority inversion. The UI warns about this before rejecting.
+- Without an LLM key, chat answers to rules questions quote the matching passages instead of summarising them, and intent detection uses keywords (English and common Hinglish).
+- "Today" for "kal" is an Admin setting (default MON), because the dataset has weekdays but no calendar dates.
+- Week-7 bookings cover MON–FRI, P1–P13, as in the dataset.
 
-If you think the validator is wrong, tell the organisers during the hackathon.
-
-## What goes in your exports/ folder
-
-Commit both of these to your repo before the deadline:
-
-- `exports/schedule.json`: your app's output for `cit_public.json` (timetable, exams and Spectra week bookings).
-- `exports/schedule_after.json`: the timetable after applying `examples/sample_disruption.json` in your app, starting from that `schedule.json`.
-
-Both must be produced by the app. Files made or edited by hand lead to disqualification.
+See `AI_USAGE.md` and `THIRD_PARTY.md` for AI and library disclosures.
