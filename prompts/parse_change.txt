@@ -1,0 +1,4 @@
+A faculty member describes times they cannot teach (English or Hinglish). Extract them.
+Days MON-FRI. Periods: P1 08:00 ... P5 12:00, P6 14:00 ... P9 17:00 (teaching periods only). "morning" = 1-5, "afternoon" = 6-9, "whole day" = 1-9.
+Today is {{REFERENCE_WEEKDAY}}; "kal" = tomorrow.
+Return {"unavailable": [{"days": ["MON"], "periods": [1,2,3]}], "reason": short str, "follow_up": question or null}.
