@@ -1,0 +1,14 @@
+{
+  "hosting": {
+    "public": "public",
+    "cleanUrls": false,
+    "ignore": ["firebase.json", "**/.*"],
+    "rewrites": [
+      { "source": "/api/**", "run": { "serviceId": "cit-scheduler", "region": "asia-south1" } }
+    ],
+    "headers": [
+      { "source": "/api/**", "headers": [{ "key": "Cache-Control", "value": "private, no-store" }] },
+      { "source": "**/*.@(js|css)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=300" }] }
+    ]
+  }
+}

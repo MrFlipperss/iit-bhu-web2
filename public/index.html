@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · CIT Scheduler</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body>
+<div class="login">
+  <section class="login-form">
+    <div class="brand" style="padding:0 0 32px"><div class="brand-mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="brand-name">CIT Scheduler<small>Chilika Institute of Technology</small></div></div>
+    <form id="f" autocomplete="on">
+      <h1 style="margin-bottom:6px">Rooms and timetables for Crunch Week</h1>
+      <p class="sub" style="margin-bottom:24px">Classes, midsems and Spectra events in one plan, with every decision explained.</p>
+      <div class="field"><label for="u">Username</label><input type="text" id="u" autocomplete="username" required></div>
+      <div class="field"><label for="p">Password</label><input type="password" id="p" autocomplete="current-password" required></div>
+      <div id="err"></div>
+      <button class="btn primary" style="width:100%;justify-content:center" id="go">Log in</button>
+      <h3 style="margin-top:32px">Demo accounts</h3>
+      <div class="demo-list" id="demo">
+        <button type="button" data-u="dean@cit.demo">Dean of Academics <span>Admin</span></button>
+        <button type="button" data-u="spectra@cit.demo">Spectra Core Team <span>Admin</span></button>
+        <button type="button" data-u="coord.ece@cit.demo">ECE Coordinator <span>Department coordinator</span></button>
+        <button type="button" data-u="f12@cit.demo">Dr. Amit Behera, F12 <span>Faculty</span></button>
+        <button type="button" data-u="dramatics@cit.demo">Dramatics Society <span>Club</span></button>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:8px">The demo password is in the README.</p>
+    </form>
+  </section>
+  <section class="login-art" aria-hidden="true">
+    <div class="mini-planner">
+      <div class="planner" style="--days:5">
+        <div class="h"></div><div class="h">MON</div><div class="h">TUE</div><div class="h">WED</div><div class="h">THU</div><div class="h">FRI</div>
+        <div class="t"><b>P2</b>09:00</div><div class="c"><div class="cell lab"><b>CS292</b><span class="m">CS-LAB-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>MA201</b><span class="m">LH-2</span></div></div><div class="c"></div><div class="c"><div class="cell tutorial"><b>MA101-T1</b><span class="m">CR-104</span></div></div>
+        <div class="t"><b>P3</b>10:00</div><div class="c"></div><div class="c"><div class="cell lecture"><b>PH101</b><span class="m">LH-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>EC301</b><span class="m">CR-103</span></div></div><div class="c"></div>
+        <div class="lunch">Lunch 13:00</div>
+        <div class="t"><b>P6</b>14:00</div><div class="c"></div><div class="c"></div><div class="c"><div class="cell lab"><b>ME292</b><span class="m">MECH-WS</span></div></div><div class="c"><div class="cell event"><b>BR-11a</b><span class="m">OAT</span></div></div><div class="c"></div>
+        <div class="t evening"><b>P10</b>18:00</div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-05b</b><span class="m">OAT</span></div></div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-07</b><span class="m">AUD</span></div></div><div class="c evening"><div class="cell event"><b>BR-16</b><span class="m">OAT</span></div></div>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:12px;text-align:center"><span class="slot">THU · P10–P12</span> Stage play moved to AUD: SH-1 was taken by an earlier request</p>
+    </div>
+  </section>
+</div>
+<script src="/assets/js/app.js"></script>
+<script>
+document.querySelectorAll("#demo button").forEach(b => b.onclick = () => { document.getElementById("u").value = b.dataset.u; document.getElementById("p").focus(); });
+document.getElementById("f").onsubmit = async e => {
+  e.preventDefault();
+  const btn = document.getElementById("go");
+  document.getElementById("err").innerHTML = "";
+  try {
+    await CIT.busy(btn, "Logging in", () => CIT.api("auth/login.php", { username: document.getElementById("u").value.trim(), password: document.getElementById("p").value }));
+    const next = new URLSearchParams(location.search).get("next");
+    location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard.html";
+  } catch (err) { document.getElementById("err").innerHTML = CIT.errorHtml(err); }
+};
+fetch("/api/auth/me.php", { credentials: "same-origin" }).then(r => r.ok && (location.href = "/dashboard.html"));
+</script>
+</body>
+</html>

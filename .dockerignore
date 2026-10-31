@@ -1,0 +1,6 @@
+.env
+.git
+exports/*.json
+tmp/
+dev/
+**/__pycache__
