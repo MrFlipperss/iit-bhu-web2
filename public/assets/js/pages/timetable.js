@@ -4,11 +4,20 @@
   if (!user) return;
   const meta = await CIT.loadMeta();
   const main = document.getElementById("main");
+  const validViews = ["group", "faculty", "room"];
+  const requestedView = qs.get("view");
+  if (requestedView && !validViews.includes(requestedView)) {
+    main.innerHTML = `<div class="page-head"><div><h1>Timetable</h1></div></div>
+      <div class="panel"><div class="callout bad">Unknown timetable view: ${esc(requestedView)}. Choose Group, Faculty, or Room.</div>
+        <a class="btn" href="timetable.html">Open the default timetable</a></div>`;
+    return;
+  }
+
   const state = {
-    view: qs.get("view") || (user.faculty_id ? "faculty" : "group"),
-    id: qs.get("id") || user.faculty_id || (meta.groups || [])[0]?.id,
-    week: qs.get("week") || "regular",
-    hours: qs.get("hours") || "full",
+    view: requestedView || (user.faculty_id ? "faculty" : "group"),
+    id: qs.has("id") ? qs.get("id") : (user.faculty_id || (meta.groups || [])[0]?.id || ""),
+    week: ["regular", "fest"].includes(qs.get("week")) ? qs.get("week") : "regular",
+    hours: ["full", "college"].includes(qs.get("hours")) ? qs.get("hours") : "full",
   };
   const lists = {
     group: (meta.groups || []).map(g => [g.id, `${g.id} · ${g.name}`]),
@@ -31,11 +40,19 @@
     document.querySelectorAll("#view button").forEach(b => b.classList.toggle("on", b.dataset.v === state.view));
     document.querySelectorAll("#week button").forEach(b => b.classList.toggle("on", b.dataset.w === state.week));
     document.querySelectorAll("#hours button").forEach(b => b.classList.toggle("on", b.dataset.h === state.hours));
-    pick.innerHTML = lists[state.view].map(([id, label]) => `<option value="${esc(id)}" ${id === state.id ? "selected" : ""}>${esc(label)}</option>`).join("");
-    if (!lists[state.view].some(([id]) => id === state.id)) state.id = lists[state.view][0][0];
-    history.replaceState(null, "", `?view=${state.view}&id=${encodeURIComponent(state.id)}&week=${state.week}&hours=${state.hours}`);
+    const choices = lists[state.view] || [];
+    const exists = choices.some(([id]) => id === state.id);
+    pick.innerHTML = `${!exists && state.id ? `<option value="${esc(state.id)}" selected>Unknown ${esc(state.view)}: ${esc(state.id)}</option>` : ""}${choices.map(([id, label]) => `<option value="${esc(id)}" ${id === state.id ? "selected" : ""}>${esc(label)}</option>`).join("")}`;
+    if (!state.id && choices.length) state.id = choices[0][0];
+    pick.value = state.id || "";
+    history.replaceState(null, "", `?view=${encodeURIComponent(state.view)}&id=${encodeURIComponent(state.id || "")}&week=${state.week}&hours=${state.hours}`);
   }
-  document.querySelectorAll("#view button").forEach(b => (b.onclick = () => { state.view = b.dataset.v; state.id = null; syncControls(); load(); }));
+  document.querySelectorAll("#view button").forEach(b => (b.onclick = () => {
+    state.view = b.dataset.v;
+    state.id = lists[state.view][0]?.[0] || "";
+    syncControls();
+    load();
+  }));
   document.querySelectorAll("#week button").forEach(b => (b.onclick = () => { state.week = b.dataset.w; syncControls(); load(); }));
   document.querySelectorAll("#hours button").forEach(b => (b.onclick = () => { state.hours = b.dataset.h; syncControls(); renderCurrent(); }));
   pick.onchange = () => { state.id = pick.value; syncControls(); load(); };
@@ -49,42 +66,56 @@
 
   async function load() {
     const grid = document.getElementById("grid");
+    cachedData = null;
+    if (!state.id || !lists[state.view].some(([id]) => id === state.id)) {
+      grid.innerHTML = `<div class="panel empty">No ${esc(state.view)} matches “${esc(state.id || "(none selected)")}”. Choose a valid ${esc(state.view)} to view its timetable.</div>`;
+      document.getElementById("summary").textContent = "";
+      return;
+    }
     grid.innerHTML = `<div class="loading"><span class="spin"></span> Loading</div>`;
     let d;
-    try { d = await CIT.api(`schedule/get.php?view=${state.view}&id=${encodeURIComponent(state.id)}&week=${state.week}`); }
-    catch (e) { grid.innerHTML = e.code === "no_timetable" ? `<div class="panel empty">${esc(e.message)}</div>` : CIT.errorHtml(e); return; }
+    try {
+      d = await CIT.api(`schedule/get.php?view=${encodeURIComponent(state.view)}&id=${encodeURIComponent(state.id)}&week=${encodeURIComponent(state.week)}`);
+    } catch (e) {
+      grid.innerHTML = e.code === "no_timetable" ? `<div class="panel empty">${esc(e.message)}</div>` : CIT.errorHtml(e);
+      return;
+    }
     cachedData = d;
-    render(d)  function render(d) {
+    render(d);
+  }
+
+  function render(d) {
     const days = meta.days || [];
-    const entries = d.entries || [];
-    const events = d.events || [];
-    const closures = d.closures || [];
-    const unavailable = d.unavailable || [];
-    const hasEveningActivity = entries.some(e => +e.start_period >= 10 || (+e.start_period + +e.duration - 1) >= 10) ||
-                               events.some(ev => +ev.end_period >= 10 || +ev.start_period >= 10);
+    const entries = Array.isArray(d.entries) ? d.entries : [];
+    const events = Array.isArray(d.events) ? d.events : [];
+    const closures = Array.isArray(d.closures) ? d.closures : [];
+    const unavailable = Array.isArray(d.unavailable) ? d.unavailable : [];
+    const hasEveningActivity = entries.some(e => +e.start_period >= 10 || (+e.start_period + +e.duration - 1) >= 10)
+      || events.some(ev => +ev.end_period >= 10 || +ev.start_period >= 10);
     const showEvening = state.hours === "full" || hasEveningActivity || (state.week === "fest" && state.view === "room");
     const periods = (meta.periods || []).filter(p => +p.id <= (showEvening ? 13 : 9)).map(p => +p.id);
-    // grid rows: header, P1-P5, lunch, P6-P9, (P10-P13)
     const rowOf = p => 1 + p + (p >= 6 ? 1 : 0);
     let html = `<div class="table-wrap"><div class="planner" style="--days:${days.length}"><div class="h" style="grid-row:1"></div>`;
-    days.forEach((day, i) => (html += `<div class="h" style="grid-row:1;grid-column:${i + 2}">${day}</div>`));
+    days.forEach((day, i) => (html += `<div class="h" style="grid-row:1;grid-column:${i + 2}">${esc(day)}</div>`));
     const blocked = new Map();
     [...closures, ...unavailable].forEach(c => (c.periods || []).forEach(p => blocked.set(`${c.day}-${p}`, c.reason)));
     periods.forEach(p => {
       const pm = (meta.periods || []).find(x => +x.id === p);
       const ev = p >= 10 ? " evening" : "";
-      html += `<div class="t${ev}" style="grid-row:${rowOf(p)};grid-column:1"><b>P${p}</b>${pm ? pm.start : ""}</div>`;
+      html += `<div class="t${ev}" style="grid-row:${rowOf(p)};grid-column:1"><b>P${p}</b>${pm ? esc(pm.start) : ""}</div>`;
       days.forEach((day, i) => {
         const why = blocked.get(`${day}-${p}`);
-        html += `<div class="c${ev}${why ? " blocked" : "}" style="grid-row:${rowOf(p)};grid-column:${i + 2}" ${why ? `title="${esc(why)}"` : "}></div>`;
+        html += `<div class="c${ev}${why ? " blocked" : ""}" style="grid-row:${rowOf(p)};grid-column:${i + 2}"${why ? ` title="${esc(why)}"` : ""}></div>`;
       });
     });
     html += `<div class="lunch" style="grid-row:7">Lunch 13:00–14:00</div>`;
     entries.forEach((e, k) => {
       const col = days.indexOf(e.day) + 2;
-      const groups = e.groups || [];
+      const groups = Array.isArray(e.groups) ? e.groups : [];
       const label = state.view === "room" ? groups.join(", ") : state.view === "group" ? `${e.room_id} · ${e.faculty_id}` : `${e.room_id} · ${groups.join(", ")}`;
-      html += `<div class="cell ${e.kind}${e.moved_for_spectra ? " moved" : "}" data-k="${k}" style="grid-column:${col};grid-row:${rowOf(+e.start_period)} / span ${+e.duration}">
+      const end = +e.start_period + +e.duration - 1;
+      const accessibleLabel = `${e.course_title || e.course_id}, ${e.kind}, ${e.day} periods ${e.start_period} to ${end}, ${label}`;
+      html += `<div class="cell ${esc(e.kind)}${e.moved_for_spectra ? " moved" : ""}" role="button" tabindex="0" aria-label="${esc(accessibleLabel)}" data-k="${k}" style="grid-column:${col};grid-row:${rowOf(+e.start_period)} / span ${+e.duration}">
         <b>${esc(e.course_id)} <span class="muted" style="font-weight:400">${esc(e.kind)}</span></b><span class="m">${esc(label)}</span>
         ${e.moved_for_spectra ? `<span class="m">moved for ${esc(e.moved_for_spectra.by)}</span>` : ""}</div>`;
     });
@@ -96,47 +127,52 @@
       const isGuest = ev.requested_category === "guest_lecture";
       const roomLabel = ev.room_id ? `${ev.room_id}` : "";
       const requesterLabel = ev.requester ? `${ev.requester}` : "";
-      const subLabel = state.view === "room" 
-        ? requesterLabel 
-        : (roomLabel && requesterLabel ? `${roomLabel} · ${requesterLabel}` : (roomLabel || requesterLabel));
-
-      html += `<div class="cell event" data-ev="${k}" style="grid-column:${col};grid-row:${rowOf(startP)} / span ${span}">
-        <b>${esc(ev.title || ev.request_id)}</b>
-        <span class="m">${esc(subLabel)}</span>
-        ${isGuest ? `<span style="display:inline-block;padding:1px 5px;font-size:10px;border-radius:3px;background:rgba(180,50,50,0.15);color:#8a2525;font-weight:600;margin-top:2px;">Guest Lecture</span>` : ""}
-      </div>`;
+      const subLabel = state.view === "room" ? requesterLabel : (roomLabel && requesterLabel ? `${roomLabel} · ${requesterLabel}` : (roomLabel || requesterLabel));
+      const accessibleLabel = `${ev.title || ev.request_id}, ${ev.day} periods ${startP} to ${endP}, ${subLabel}. Open booking details.`;
+      html += `<div class="cell event" role="button" tabindex="0" aria-label="${esc(accessibleLabel)}" data-ev="${k}" style="grid-column:${col};grid-row:${rowOf(startP)} / span ${span}">
+        <b>${esc(ev.title || ev.request_id)}</b><span class="m">${esc(subLabel)}</span>
+        ${isGuest ? `<span style="display:inline-block;padding:1px 5px;font-size:10px;border-radius:3px;background:rgba(180,50,50,0.15);color:#8a2525;font-weight:600;margin-top:2px;">Guest Lecture</span>` : ""}</div>`;
     });
     html += `</div></div>`;
     document.getElementById("grid").innerHTML = html;
     const hours = entries.reduce((n, e) => n + +e.duration, 0);
     const eventCount = events.length;
     const versionId = d.version?.id ?? "–";
-    document.getElementById("summary").innerHTML = `${entries.length} regular sessions · ${hours} hours a week${eventCount ? ` · ${eventCount} scheduled event(s)/guest lecture(s)` : ""} · version <span class="mono">${versionId}</span>`;
-    document.querySelectorAll(".cell[data-k]").forEach(c => (c.onclick = () => showSession(entries[c.dataset.k])));
-    document.querySelectorAll(".cell[data-ev]").forEach(c => (c.onclick = () => (location.href = `bookings.html?id=${encodeURIComponent(events[c.dataset.ev].request_id)}`)));
-  }t_id)}`)));
+    document.getElementById("summary").innerHTML = `${entries.length} regular sessions · ${hours} hours a week${eventCount ? ` · ${eventCount} scheduled event(s)/guest lecture(s)` : ""} · version <span class="mono">${esc(versionId)}</span>`;
+    document.querySelectorAll(".cell[data-k]").forEach(c => {
+      const activate = () => showSession(entries[Number(c.dataset.k)]);
+      c.onclick = activate;
+      c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } };
+    });
+    document.querySelectorAll(".cell[data-ev]").forEach(c => {
+      const activate = () => { location.href = `bookings.html?id=${encodeURIComponent(events[Number(c.dataset.ev)].request_id)}`; };
+      c.onclick = activate;
+      c.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } };
+    });
   }
 
   function showSession(e) {
+    if (!e) return;
     const end = +e.start_period + +e.duration - 1;
+    const groups = Array.isArray(e.groups) ? e.groups : [];
     const dr = CIT.openDrawer(`<div class="drawer-head"><div><h2 style="margin:0">${esc(e.course_title || e.course_id)}</h2>
         <div class="mono sub">${esc(e.session_id)}</div></div><button class="btn ghost small" data-close aria-label="Close">${icon("x")}</button></div>
       <dl class="kv"><dt>When</dt><dd>${slot(e.day, e.start_period, end)} <span class="muted">${periodTime(e.start_period)}</span></dd>
         <dt>Room</dt><dd class="mono">${esc(e.room_id)}</dd><dt>Kind</dt><dd>${esc(e.kind)}, ${e.duration} h</dd>
         <dt>Faculty</dt><dd>${esc(e.faculty_name)} <span class="mono muted">${esc(e.faculty_id)}</span></dd>
-        <dt>Groups</dt><dd><div class="chips">${e.groups.map(g => `<span class="chip">${esc(g)}</span>`).join("")}</div></dd>
-        <dt>Students</dt><dd class="mono">${e.size}</dd>${e.basket_slot ? `<dt>Elective basket</dt><dd class="mono">${esc(e.basket_slot)}</dd>` : ""}
-        ${e.moved_for_spectra ? `<dt>Spectra week</dt><dd>Moved from ${slot(e.moved_for_spectra.from[0], e.moved_for_spectra.from[1])} in ${esc(e.moved_for_spectra.from[2])} for <a href="bookings.html?id=${esc(e.moved_for_spectra.by)}">${esc(e.moved_for_spectra.by)}</a></dd>` : ""}</dl>
+        <dt>Groups</dt><dd><div class="chips">${groups.map(g => `<span class="chip">${esc(g)}</span>`).join("")}</div></dd>
+        <dt>Students</dt><dd class="mono">${esc(e.size)}</dd>${e.basket_slot ? `<dt>Elective basket</dt><dd class="mono">${esc(e.basket_slot)}</dd>` : ""}
+        ${e.moved_for_spectra ? `<dt>Spectra week</dt><dd>Moved from ${slot(e.moved_for_spectra.from[0], e.moved_for_spectra.from[1])} in ${esc(e.moved_for_spectra.from[2])} for <a href="bookings.html?id=${encodeURIComponent(e.moved_for_spectra.by)}">${esc(e.moved_for_spectra.by)}</a></dd>` : ""}</dl>
       <div style="margin-top:20px"><button class="btn" id="why">Why here?</button></div><div id="whyOut" style="margin-top:12px"></div>`);
     dr.querySelector("#why").onclick = async ev => {
       try {
         const x = await CIT.busy(ev.currentTarget, "Checking", () => CIT.api(`schedule/explain.php?session_id=${encodeURIComponent(e.session_id)}`));
         const blocked = {};
-        x.grid.filter(r => r.status === "blocked").forEach(r => (blocked[r.why] = (blocked[r.why] || 0) + 1));
-        const open = x.grid.filter(r => r.status === "possible").sort((a, b) => a.penalty - b.penalty).slice(0, 5);
+        (Array.isArray(x.grid) ? x.grid : []).filter(r => r.status === "blocked").forEach(r => (blocked[r.why] = (blocked[r.why] || 0) + 1));
+        const open = (Array.isArray(x.grid) ? x.grid : []).filter(r => r.status === "possible").sort((a, b) => a.penalty - b.penalty).slice(0, 5);
         dr.querySelector("#whyOut").innerHTML = `<p>${esc(x.text)}</p>
           <h3 style="margin-top:12px">Ruled out</h3><table>${Object.entries(blocked).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([w, n]) => `<tr><td>${esc(w)}</td><td class="num mono">${n}</td></tr>`).join("")}</table>
-          ${open.length ? `<h3 style="margin-top:12px">Other open slots</h3><table>${open.map(o => `<tr><td>${slot(o.day, o.start_period)}</td><td class="mono">${esc(o.room)}</td><td class="sub">${o.penalty ? esc(o.penalty_parts.join("; ")) : "no local penalty"}</td></tr>`).join("")}</table>` : ""}`;
+          ${open.length ? `<h3 style="margin-top:12px">Other open slots</h3><table>${open.map(o => `<tr><td>${slot(o.day, o.start_period)}</td><td class="mono">${esc(o.room)}</td><td class="sub">${o.penalty ? esc((o.penalty_parts || []).join("; ")) : "no local penalty"}</td></tr>`).join("")}</table>` : ""}`;
       } catch (err) { dr.querySelector("#whyOut").innerHTML = CIT.errorHtml(err); }
     };
   }
