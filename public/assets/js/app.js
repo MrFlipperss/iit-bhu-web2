@@ -512,17 +512,89 @@ const CIT = {
     if (path.startsWith("auth/login.php")) {
       const u = (body && body.username) || "";
       const p = (body && body.password) || "";
+      const DEMO_PASSWORD = "Kian@2407";
+
+      // ---------- All 62 CIT user accounts ----------
       const demoUsers = {
-        "dean@cit.demo": { username: "dean@cit.demo", display_name: "Dean of Academics", role: "admin", faculty_id: null },
-        "spectra@cit.demo": { username: "spectra@cit.demo", display_name: "Spectra Core Team", role: "club", faculty_id: null },
-        "coord.ece@cit.demo": { username: "coord.ece@cit.demo", display_name: "ECE Coordinator", role: "department_coordinator", faculty_id: null, department: "ECE" },
-        "f12@cit.demo": { username: "f12@cit.demo", display_name: "Dr. Amit Behera", role: "faculty", faculty_id: "F12" },
-        "dramatics@cit.demo": { username: "dramatics@cit.demo", display_name: "Dramatics Society", role: "club", faculty_id: null }
+        // ── Administrators (2) ──
+        "dean@cit.demo":    { username: "dean@cit.demo",    display_name: "Dean of Academics",   role: "admin", faculty_id: "F37", department: "ADMIN" },
+        "spectra@cit.demo": { username: "spectra@cit.demo", display_name: "Spectra Core Team",   role: "admin", faculty_id: null,  department: null },
+
+        // ── Department Coordinators (9) ──
+        "coord.cse@cit.demo": { username: "coord.cse@cit.demo", display_name: "CSE Coordinator",           role: "department_coordinator", faculty_id: null, department: "CSE" },
+        "coord.ece@cit.demo": { username: "coord.ece@cit.demo", display_name: "ECE Coordinator",           role: "department_coordinator", faculty_id: null, department: "ECE" },
+        "coord.ee@cit.demo":  { username: "coord.ee@cit.demo",  display_name: "EE Coordinator",            role: "department_coordinator", faculty_id: null, department: "EE" },
+        "coord.me@cit.demo":  { username: "coord.me@cit.demo",  display_name: "ME Coordinator",            role: "department_coordinator", faculty_id: null, department: "ME" },
+        "coord.ce@cit.demo":  { username: "coord.ce@cit.demo",  display_name: "CE Coordinator",            role: "department_coordinator", faculty_id: null, department: "CE" },
+        "coord.ma@cit.demo":  { username: "coord.ma@cit.demo",  display_name: "Mathematics Coordinator",   role: "department_coordinator", faculty_id: null, department: "MA" },
+        "coord.ph@cit.demo":  { username: "coord.ph@cit.demo",  display_name: "Physics Coordinator",       role: "department_coordinator", faculty_id: null, department: "PH" },
+        "coord.hss@cit.demo": { username: "coord.hss@cit.demo", display_name: "HSS Coordinator",           role: "department_coordinator", faculty_id: null, department: "HSS" },
+        "tnp@cit.demo":       { username: "tnp@cit.demo",       display_name: "Training & Placement Officer", role: "department_coordinator", faculty_id: null, department: "CSE" },
+
+        // ── Student Clubs (11) ──
+        "astronomy@cit.demo": { username: "astronomy@cit.demo", display_name: "Astronomy Club",      role: "club", faculty_id: null },
+        "coding@cit.demo":    { username: "coding@cit.demo",    display_name: "Coding Club",         role: "club", faculty_id: null },
+        "dance@cit.demo":     { username: "dance@cit.demo",     display_name: "Dance Club",          role: "club", faculty_id: null },
+        "dramatics@cit.demo": { username: "dramatics@cit.demo", display_name: "Dramatics Society",   role: "club", faculty_id: null },
+        "ecell@cit.demo":     { username: "ecell@cit.demo",     display_name: "E-Cell",              role: "club", faculty_id: null },
+        "gaming@cit.demo":    { username: "gaming@cit.demo",    display_name: "Gaming Society",      role: "club", faculty_id: null },
+        "literary@cit.demo":  { username: "literary@cit.demo",  display_name: "Literary Society",    role: "club", faculty_id: null },
+        "music@cit.demo":     { username: "music@cit.demo",     display_name: "Music Club",          role: "club", faculty_id: null },
+        "photo@cit.demo":     { username: "photo@cit.demo",     display_name: "Photography Club",    role: "club", faculty_id: null },
+        "quiz@cit.demo":      { username: "quiz@cit.demo",      display_name: "Quiz Club",           role: "club", faculty_id: null },
+        "robotics@cit.demo":  { username: "robotics@cit.demo",  display_name: "Robotics Club",       role: "club", faculty_id: null },
+
+        // ── Faculty Members (40): F01 – F40 ──
+        "f01@cit.demo": { username: "f01@cit.demo", display_name: "Dr. Ananya Mishra",           role: "faculty", faculty_id: "F01", department: "CSE" },
+        "f02@cit.demo": { username: "f02@cit.demo", display_name: "Dr. Rohit Sahoo",             role: "faculty", faculty_id: "F02", department: "CSE" },
+        "f03@cit.demo": { username: "f03@cit.demo", display_name: "Dr. Kavya Iyer",              role: "faculty", faculty_id: "F03", department: "CSE" },
+        "f04@cit.demo": { username: "f04@cit.demo", display_name: "Dr. Sandeep Patnaik",         role: "faculty", faculty_id: "F04", department: "CSE" },
+        "f05@cit.demo": { username: "f05@cit.demo", display_name: "Dr. Meera Nair",              role: "faculty", faculty_id: "F05", department: "CSE" },
+        "f06@cit.demo": { username: "f06@cit.demo", display_name: "Dr. Arjun Mehta",             role: "faculty", faculty_id: "F06", department: "CSE" },
+        "f07@cit.demo": { username: "f07@cit.demo", display_name: "Dr. Pooja Das",               role: "faculty", faculty_id: "F07", department: "CSE" },
+        "f08@cit.demo": { username: "f08@cit.demo", display_name: "Prof. Vikram Rao (Visiting)", role: "faculty", faculty_id: "F08", department: "CSE" },
+        "f09@cit.demo": { username: "f09@cit.demo", display_name: "Dr. Ishita Banerjee",         role: "faculty", faculty_id: "F09", department: "ECE" },
+        "f10@cit.demo": { username: "f10@cit.demo", display_name: "Dr. Suresh Pradhan",          role: "faculty", faculty_id: "F10", department: "ECE" },
+        "f11@cit.demo": { username: "f11@cit.demo", display_name: "Dr. Neha Kulkarni",           role: "faculty", faculty_id: "F11", department: "ECE" },
+        "f12@cit.demo": { username: "f12@cit.demo", display_name: "Dr. Amit Behera",             role: "faculty", faculty_id: "F12", department: "ECE" },
+        "f13@cit.demo": { username: "f13@cit.demo", display_name: "Dr. Ritu Sharma",             role: "faculty", faculty_id: "F13", department: "ECE" },
+        "f14@cit.demo": { username: "f14@cit.demo", display_name: "Dr. Kunal Joshi",             role: "faculty", faculty_id: "F14", department: "EE" },
+        "f15@cit.demo": { username: "f15@cit.demo", display_name: "Dr. Sneha Mohanty",           role: "faculty", faculty_id: "F15", department: "EE" },
+        "f16@cit.demo": { username: "f16@cit.demo", display_name: "Dr. Rakesh Panda",            role: "faculty", faculty_id: "F16", department: "EE" },
+        "f17@cit.demo": { username: "f17@cit.demo", display_name: "Dr. Divya Menon",             role: "faculty", faculty_id: "F17", department: "EE" },
+        "f18@cit.demo": { username: "f18@cit.demo", display_name: "Dr. Manoj Tripathy",          role: "faculty", faculty_id: "F18", department: "EE" },
+        "f19@cit.demo": { username: "f19@cit.demo", display_name: "Dr. Shalini Gupta",           role: "faculty", faculty_id: "F19", department: "MA" },
+        "f20@cit.demo": { username: "f20@cit.demo", display_name: "Dr. Prakash Nayak",           role: "faculty", faculty_id: "F20", department: "MA" },
+        "f21@cit.demo": { username: "f21@cit.demo", display_name: "Dr. Lakshmi Reddy",           role: "faculty", faculty_id: "F21", department: "PH" },
+        "f22@cit.demo": { username: "f22@cit.demo", display_name: "Dr. Harish Dash",             role: "faculty", faculty_id: "F22", department: "PH" },
+        "f23@cit.demo": { username: "f23@cit.demo", display_name: "Dr. Farah Khan",              role: "faculty", faculty_id: "F23", department: "PH" },
+        "f24@cit.demo": { username: "f24@cit.demo", display_name: "Dr. Gaurav Jena",             role: "faculty", faculty_id: "F24", department: "PH" },
+        "f25@cit.demo": { username: "f25@cit.demo", display_name: "Dr. Tanvi Desai",             role: "faculty", faculty_id: "F25", department: "ME" },
+        "f26@cit.demo": { username: "f26@cit.demo", display_name: "Dr. Abhishek Rout",           role: "faculty", faculty_id: "F26", department: "ME" },
+        "f27@cit.demo": { username: "f27@cit.demo", display_name: "Dr. Sunita Bose",             role: "faculty", faculty_id: "F27", department: "ME" },
+        "f28@cit.demo": { username: "f28@cit.demo", display_name: "Dr. Nikhil Swain",            role: "faculty", faculty_id: "F28", department: "ME" },
+        "f29@cit.demo": { username: "f29@cit.demo", display_name: "Dr. Priya Raman",             role: "faculty", faculty_id: "F29", department: "ME" },
+        "f30@cit.demo": { username: "f30@cit.demo", display_name: "Dr. Debashish Sethi",         role: "faculty", faculty_id: "F30", department: "ME" },
+        "f31@cit.demo": { username: "f31@cit.demo", display_name: "Dr. Anjali Verma",            role: "faculty", faculty_id: "F31", department: "CE" },
+        "f32@cit.demo": { username: "f32@cit.demo", display_name: "Dr. Sameer Khuntia",          role: "faculty", faculty_id: "F32", department: "CE" },
+        "f33@cit.demo": { username: "f33@cit.demo", display_name: "Dr. Rekha Pillai",            role: "faculty", faculty_id: "F33", department: "CE" },
+        "f34@cit.demo": { username: "f34@cit.demo", display_name: "Dr. Varun Acharya",           role: "faculty", faculty_id: "F34", department: "CE" },
+        "f35@cit.demo": { username: "f35@cit.demo", display_name: "Dr. Bhavna Saxena",           role: "faculty", faculty_id: "F35", department: "CE" },
+        "f36@cit.demo": { username: "f36@cit.demo", display_name: "Dr. Ashok Mahapatra",         role: "faculty", faculty_id: "F36", department: "HSS" },
+        "f37@cit.demo": { username: "f37@cit.demo", display_name: "Prof. Shreya Kapoor (Dean)",  role: "faculty", faculty_id: "F37", department: "ADMIN" },
+        "f38@cit.demo": { username: "f38@cit.demo", display_name: "Dr. Imran Qureshi",           role: "faculty", faculty_id: "F38", department: "HSS" },
+        "f39@cit.demo": { username: "f39@cit.demo", display_name: "Dr. Radhika Hegde",           role: "faculty", faculty_id: "F39", department: "HSS" },
+        "f40@cit.demo": { username: "f40@cit.demo", display_name: "Dr. Om Prakash Sahu",         role: "faculty", faculty_id: "F40", department: "HSS" }
       };
+
+      // Validate password
+      if (p !== DEMO_PASSWORD) {
+        throw new Error("Invalid password. The demo password is: Kian@2407");
+      }
 
       const userMatch = demoUsers[u];
       if (!userMatch) {
-        throw new Error("Unknown user account. Please select one of the demo accounts.");
+        throw new Error("Unknown user account. Try any username from the credentials list (e.g. f27@cit.demo, coding@cit.demo, coord.me@cit.demo).");
       }
       CIT.setCurrentUser(userMatch);
       return { ok: true, user: userMatch, csrf: "cit-auth-token" };
