@@ -148,10 +148,10 @@
             <b>${esc(r.room_id || r.requested_room || 'Any Room')}</b> · ${esc(r.day || 'THU')} P${r.start_period || 10}-P${r.end_period || 12}
             ${r.details ? `<div class="muted" style="font-size:11.5px;margin-top:2px">${esc(r.details)}</div>` : ''}
           </td>
-          <td>
-            <div class="actions" style="margin:0">
-              <button class="btn small primary" data-approve="${esc(r.id)}" data-day="${esc(r.day || '')}" data-room="${esc(r.room_id || '')}" data-start="${esc(r.start_period || '')}" data-end="${esc(r.end_period || '')}" data-prop="${esc(r.proposal_id || '')}">Approve</button>
-              <button class="btn small danger" data-reject="${esc(r.id)}" data-prop="${esc(r.proposal_id || '')}">Reject</button>
+          <td style="white-space:nowrap;min-width:180px">
+            <div class="approval-actions">
+              <button class="btn small primary approval-btn" data-approve="${esc(r.id)}" data-day="${esc(r.day || '')}" data-room="${esc(r.room_id || '')}" data-start="${esc(r.start_period || '')}" data-end="${esc(r.end_period || '')}" data-prop="${esc(r.proposal_id || '')}">Accept</button>
+              <button class="btn small danger approval-btn" data-reject="${esc(r.id)}" data-prop="${esc(r.proposal_id || '')}">Reject</button>
             </div>
           </td>
         </tr>`;

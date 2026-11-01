@@ -6,45 +6,65 @@
 <title>Log in · CIT Scheduler</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body>
 <div class="login">
-  <section class="login-form">
-    <div class="brand" style="padding:0 0 32px"><div class="brand-mark"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-      <div class="brand-name">CIT Scheduler<small>Chilika Institute of Technology</small></div></div>
-    <form id="f" autocomplete="on">
-      <h1 style="margin-bottom:6px">Rooms and timetables for Crunch Week</h1>
-      <p class="sub" style="margin-bottom:24px">Classes, midsems and Spectra events in one plan, with every decision explained.</p>
-      <div class="field"><label for="u">Username</label><input type="text" id="u" autocomplete="username" required></div>
-      <div class="field"><label for="p">Password</label><input type="password" id="p" autocomplete="current-password" required></div>
-      <div id="err"></div>
-      <button class="btn primary" style="width:100%;justify-content:center" id="go">Log in</button>
-      <h3 style="margin-top:32px">Demo accounts</h3>
-      <div class="demo-list" id="demo">
-        <button type="button" data-u="dean@cit.demo">Dean of Academics <span>Admin</span></button>
-        <button type="button" data-u="spectra@cit.demo">Spectra Core Team <span>Fest Organizer</span></button>
-        <button type="button" data-u="coord.ece@cit.demo">ECE Coordinator <span>Department coordinator</span></button>
-        <button type="button" data-u="f12@cit.demo">Dr. Amit Behera, F12 <span>Faculty</span></button>
-        <button type="button" data-u="dramatics@cit.demo">Dramatics Society <span>Club</span></button>
+  <div class="login-card">
+    <section class="login-form">
+      <div class="login-box">
+        <div style="margin-bottom:28px">
+          <a href="index.html" class="brand-pill">
+            <div class="brand-mark" style="width:18px;height:18px;padding:3px;margin-right:2px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <span class="brand-pill-title">CIT Scheduler</span>
+          </a>
+        </div>
+        <form id="f" autocomplete="on">
+          <h1 style="margin-bottom:8px;font-size:26px;font-weight:500;letter-spacing:-0.02em;color:var(--c-deep-charcoal)">Crunch Week Scheduler</h1>
+          <p class="sub" style="margin-bottom:24px;color:var(--c-secondary-text)">Classes, midsems and Spectra events in one plan, with every decision explained.</p>
+          <div class="field">
+            <label for="u">Username</label>
+            <input type="text" id="u" autocomplete="username" placeholder="e.g. dean@cit.demo" required>
+          </div>
+          <div class="field">
+            <label for="p">Password</label>
+            <input type="password" id="p" autocomplete="current-password" placeholder="••••••••" required>
+          </div>
+          <div id="err"></div>
+          <button class="btn primary" style="width:100%;justify-content:center;margin-top:10px" id="go">Log in</button>
+          <h3 style="margin-top:28px;color:var(--c-secondary-text);font-size:13px">Demo accounts</h3>
+          <div class="demo-list" id="demo">
+            <button type="button" data-u="dean@cit.demo">Dean of Academics <span>Admin</span></button>
+            <button type="button" data-u="spectra@cit.demo">Spectra Core Team <span>Fest Organizer</span></button>
+            <button type="button" data-u="coord.ece@cit.demo">ECE Coordinator <span>Dept coordinator</span></button>
+            <button type="button" data-u="f12@cit.demo">Dr. Amit Behera, F12 <span>Faculty</span></button>
+            <button type="button" data-u="dramatics@cit.demo">Dramatics Society <span>Club</span></button>
+          </div>
+          <p class="muted" style="font-size:12px;margin-top:12px;color:var(--c-secondary-text)">The demo password is prefilled on click.</p>
+        </form>
       </div>
-      <p class="muted" style="font-size:12px;margin-top:8px">The demo password is in the README.</p>
-    </form>
-  </section>
-  <section class="login-art" aria-hidden="true">
-    <div class="mini-planner">
-      <div class="planner" style="--days:5">
-        <div class="h"></div><div class="h">MON</div><div class="h">TUE</div><div class="h">WED</div><div class="h">THU</div><div class="h">FRI</div>
-        <div class="t"><b>P2</b>09:00</div><div class="c"><div class="cell lab"><b>CS292</b><span class="m">CS-LAB-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>MA201</b><span class="m">LH-2</span></div></div><div class="c"></div><div class="c"><div class="cell tutorial"><b>MA101-T1</b><span class="m">CR-104</span></div></div>
-        <div class="t"><b>P3</b>10:00</div><div class="c"></div><div class="c"><div class="cell lecture"><b>PH101</b><span class="m">LH-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>EC301</b><span class="m">CR-103</span></div></div><div class="c"></div>
-        <div class="lunch">Lunch 13:00</div>
-        <div class="t"><b>P6</b>14:00</div><div class="c"></div><div class="c"></div><div class="c"><div class="cell lab"><b>ME292</b><span class="m">MECH-WS</span></div></div><div class="c"><div class="cell event"><b>BR-11a</b><span class="m">OAT</span></div></div><div class="c"></div>
-        <div class="t evening"><b>P10</b>18:00</div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-05b</b><span class="m">OAT</span></div></div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-07</b><span class="m">AUD</span></div></div><div class="c evening"><div class="cell event"><b>BR-16</b><span class="m">OAT</span></div></div>
+    </section>
+    <section class="login-art" aria-hidden="true">
+      <div class="mini-planner">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <span style="font-weight:600;font-size:15px;color:var(--c-deep-charcoal)">Weekly Schedule Preview</span>
+          <span class="tag accent" style="padding:4px 12px;font-size:11.5px">Week 7 · Crunch</span>
+        </div>
+        <div class="planner" style="--days:5">
+          <div class="h"></div><div class="h">MON</div><div class="h">TUE</div><div class="h">WED</div><div class="h">THU</div><div class="h">FRI</div>
+          <div class="t"><b>P2</b>09:00</div><div class="c"><div class="cell lab"><b>CS292</b><span class="m">CS-LAB-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>MA201</b><span class="m">LH-2</span></div></div><div class="c"></div><div class="c"><div class="cell tutorial"><b>MA101-T1</b><span class="m">CR-104</span></div></div>
+          <div class="t"><b>P3</b>10:00</div><div class="c"></div><div class="c"><div class="cell lecture"><b>PH101</b><span class="m">LH-1</span></div></div><div class="c"></div><div class="c"><div class="cell lecture"><b>EC301</b><span class="m">CR-103</span></div></div><div class="c"></div>
+          <div class="lunch">Lunch 13:00</div>
+          <div class="t"><b>P6</b>14:00</div><div class="c"></div><div class="c"></div><div class="c"><div class="cell lab"><b>ME292</b><span class="m">MECH-WS</span></div></div><div class="c"><div class="cell event"><b>BR-11a</b><span class="m">OAT</span></div></div><div class="c"></div>
+          <div class="t evening"><b>P10</b>18:00</div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-05b</b><span class="m">OAT</span></div></div><div class="c evening"></div><div class="c evening"><div class="cell event"><b>BR-07</b><span class="m">AUD</span></div></div><div class="c evening"><div class="cell event"><b>BR-16</b><span class="m">OAT</span></div></div>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:14px;text-align:center;color:var(--c-secondary-text)">
+          <span class="slot" style="background:#FFF;padding:2px 8px;border-radius:999px;border:1px solid var(--c-light-border)">THU · P10–P12</span> Stage play moved to AUD: SH-1 was taken by an earlier request
+        </p>
       </div>
-      <p class="muted" style="font-size:12px;margin-top:12px;text-align:center"><span class="slot">THU · P10–P12</span> Stage play moved to AUD: SH-1 was taken by an earlier request</p>
-    </div>
-  </section>
+    </section>
+  </div>
 </div>
 <script src="/assets/js/app.js"></script>
 <script>

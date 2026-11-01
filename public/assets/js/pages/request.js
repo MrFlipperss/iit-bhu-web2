@@ -7,6 +7,40 @@
   const rooms = (meta.rooms || []).map(r => ({ ...r, allowed_uses: Array.isArray(r.allowed_uses) ? r.allowed_uses : [], features: Array.isArray(r.features) ? r.features : [] }));
   const types = [...new Set(rooms.filter(r => r.allowed_uses.includes("event")).map(r => r.type))];
   const needs = [...new Set(rooms.flatMap(r => r.features)), "accessible"];
+  const typeLabels = {
+    auditorium: "Auditorium",
+    seminar_hall: "Seminar Hall",
+    lecture_hall: "Lecture Hall",
+    classroom: "Classroom",
+    outdoor: "Outdoor / OAT",
+    lab_cs: "CS Lab",
+    lab_elec: "Electrical Lab",
+    lab_phy: "Physics Lab",
+    lab_civil: "Civil Lab",
+    workshop: "Workshop"
+  };
+  const typeOrder = ["auditorium", "seminar_hall", "lecture_hall", "classroom", "outdoor", "lab_cs", "lab_elec", "lab_phy", "lab_civil", "workshop"];
+  const sortedTypes = [...types].sort((a, b) => {
+    const ia = typeOrder.indexOf(a);
+    const ib = typeOrder.indexOf(b);
+    return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+  });
+
+  const needLabels = {
+    projector: "Projector",
+    pa_system: "PA System",
+    ac: "AC (Air-con)",
+    stage: "Stage",
+    computers: "Computers",
+    power_benches: "Power Benches",
+    accessible: "Wheelchair Access"
+  };
+  const needOrder = ["projector", "pa_system", "ac", "stage", "computers", "power_benches", "accessible"];
+  const sortedNeeds = [...needs].sort((a, b) => {
+    const ia = needOrder.indexOf(a);
+    const ib = needOrder.indexOf(b);
+    return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+  });
   const cap = (meta.role_caps || {})[user.role];
   const capRank = (meta.categories || []).find(c => c.code === cap)?.rank ?? 99;
   const cats = (meta.categories || []).filter(c => +c.bookable);
@@ -14,7 +48,7 @@
 
   main.innerHTML = `<div class="page-head"><div><h1>New request page</h1>
       <div class="sub">Describe it in your own words or fill the form. Nothing is booked until you submit, and the decision follows the priority rules.</div></div></div>
-    <div class="cols-even">
+    <div class="cols-even request-cols">
       <div class="panel"><h2>Describe it</h2>
         <textarea id="text" rows="4" placeholder="e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye"></textarea>
         <div class="actions" style="margin-top:8px"><button class="btn" id="parse">Fill the form</button>
@@ -33,8 +67,20 @@
         <label>When it may take place <span class="muted">(the event must fit inside one window)</span></label>
         <div id="wins"></div><button type="button" class="btn small ghost" id="addWin">${icon("plus")} Add a window</button>
         <label class="check" style="margin:8px 0 12px"><input type="checkbox" id="repeat"> Separate booking for each window (a weekly series)</label>
-        <div class="field"><label>Room types</label><div class="checks" id="types">${types.map(t => `<label class="check"><input type="checkbox" value="${t}"> ${words(t)}</label>`).join("")}</div></div>
-        <div class="field"><label>Needs</label><div class="checks" id="needs">${needs.map(n => `<label class="check"><input type="checkbox" value="${n}"> ${words(n)}</label>`).join("")}</div></div>
+        <div class="row options-split" style="gap:20px;margin:12px 0 16px;align-items:flex-start">
+          <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
+            <label style="font-weight:600;font-size:12.5px;color:var(--c-deep-charcoal);margin-bottom:8px">Room types <span class="muted" style="font-weight:400;font-size:11.5px">(optional)</span></label>
+            <div class="checks-grid" id="types">
+              ${sortedTypes.map(t => `<label class="check" title="${esc(typeLabels[t] || words(t))}"><input type="checkbox" value="${t}"> <span>${esc(typeLabels[t] || words(t))}</span></label>`).join("")}
+            </div>
+          </div>
+          <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
+            <label style="font-weight:600;font-size:12.5px;color:var(--c-deep-charcoal);margin-bottom:8px">Needs & features <span class="muted" style="font-weight:400;font-size:11.5px">(optional)</span></label>
+            <div class="checks-grid" id="needs">
+              ${sortedNeeds.map(n => `<label class="check" title="${esc(needLabels[n] || words(n))}"><input type="checkbox" value="${n}"> <span>${esc(needLabels[n] || words(n))}</span></label>`).join("")}
+            </div>
+          </div>
+        </div>
         <div class="row"><div class="field"><label for="room">Preferred room <span class="muted">(optional)</span></label>
             <select id="room"><option value="">Any suitable room</option>${rooms.filter(r => r.allowed_uses.includes("event")).map(r => `<option value="${r.id}">${r.id} · ${esc(r.name)} (${r.capacity}${r.accessible ? "" : ", not step-free"})</option>`).join("")}</select></div>
           <div class="field"><label for="groups">Mandatory for groups <span class="muted">(optional)</span></label>
