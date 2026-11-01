@@ -482,9 +482,18 @@ p { margin: 0 0 8px; }
   min-height: 110px;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(36, 36, 36, 0.06);
+/* Hover only on clickable cards (dashboard cards, tables, etc.) */
+.stat-card.clickable,
+.card.clickable,
+.panel.clickable {
+  cursor: pointer;
+}
+.stat-card.clickable:hover,
+.card.clickable:hover,
+.panel.clickable:hover {
+  /* lift & deeper shadow for interactive cards */
+  transform: translateY(-6px);
+  box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
 }
 .stat-card.charcoal {
   background: var(--grad-charcoal-panel);
@@ -833,60 +842,63 @@ tr.changed td { background: #fbf8ef; }
   border-color: var(--c-butter-yellow);
 }
 
-/* ---------- Login Page */
+/* ---------- Login Page (Full Screen 3D Architectural Wave + Floating Glass Card) */
 .login {
+  position: relative;
   min-height: 100vh;
   width: 100%;
   margin: 0;
-  padding: 0;
+  padding: 40px 20px;
   display: flex;
-  background: var(--grad-main-dashboard);
-}
-.login-card {
-  background: var(--grad-main-dashboard);
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  border: none !important;
-  max-width: none !important;
-  width: 100% !important;
-  min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(380px, 440px) 1fr;
-  overflow: hidden;
-}
-.login-form {
-  padding: 40px 48px;
-  background: #FFFFFF;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
-  border-right: 1px solid rgba(36, 36, 36, 0.08);
-  box-shadow: 6px 0 30px rgba(36, 36, 36, 0.03);
-  z-index: 2;
+  justify-content: center;
+  background: #161615;
+  overflow-x: hidden;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.hero-waves {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  z-index: 1;
+  pointer-events: none;
+}
+/* Floating card in the middle over full-screen wave animation */
+.login-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 440px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 38px 40px;
+  box-sizing: border-box;
+  display: block;
+  animation: floatCardIn 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes floatCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 .login-box {
   width: 100%;
-  max-width: 330px;
 }
-.login-form form {
+.login-card form {
   width: 100%;
-}
-.login-art {
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 48px;
-}
-.mini-planner {
-  width: min(580px, 100%);
-  background: rgba(255, 255, 255, 0.85);
-  padding: 24px 28px;
-  border-radius: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 16px 40px rgba(36, 36, 36, 0.05);
-  backdrop-filter: blur(12px);
 }
 .demo-list {
   display: flex;
@@ -1015,9 +1027,8 @@ tr.changed td { background: #fbf8ef; }
   .nav-scroll-arrow { display: none !important; }
   .main { padding: 20px 16px 40px; }
   .cols, .cols-even { grid-template-columns: 1fr; }
-  .login-card { grid-template-columns: 1fr; }
-  .login-art { display: none; }
-  .login-form { border-right: none; padding: 40px 20px; box-shadow: none; }
+  .login { padding: 24px 16px; }
+  .login-card { padding: 32px 22px; max-width: 100%; border-radius: 24px; }
   .kpi-group { width: 100%; justify-content: space-between; }
   .hero-greeting { font-size: 28px; }
 }
