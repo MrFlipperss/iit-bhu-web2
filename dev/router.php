@@ -2,6 +2,7 @@
 // dev/router.php  Local development only:  php -S localhost:8000 -t public dev/router.php
 // Serves public/ as the web root and maps /api/... to the api/ folder outside it,
 // exactly like the Apache Alias in docker/apache.conf.
+header('Connection: close');
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if (str_starts_with($path, '/api/')) {
     $file = realpath(__DIR__ . '/../api/' . substr($path, 5));

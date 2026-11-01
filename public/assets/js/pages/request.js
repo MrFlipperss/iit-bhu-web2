@@ -4,16 +4,51 @@
   if (!user) return;
   const meta = await CIT.loadMeta();
   const main = document.getElementById("main");
-  const types = [...new Set(meta.rooms.filter(r => r.allowed_uses.includes("event")).map(r => r.type))];
-  const needs = [...new Set(meta.rooms.flatMap(r => r.features)), "accessible"];
-  const cap = meta.role_caps[user.role];
-  const capRank = meta.categories.find(c => c.code === cap)?.rank ?? 99;
-  const cats = meta.categories.filter(c => +c.bookable);
-  const periodOpts = sel => meta.periods.map(p => `<option value="${p.id}" ${+sel === +p.id ? "selected" : ""}>P${p.id} ${p.start}</option>`).join("");
+  const rooms = (meta.rooms || []).map(r => ({ ...r, allowed_uses: Array.isArray(r.allowed_uses) ? r.allowed_uses : [], features: Array.isArray(r.features) ? r.features : [] }));
+  const types = [...new Set(rooms.filter(r => r.allowed_uses.includes("event")).map(r => r.type))];
+  const needs = [...new Set(rooms.flatMap(r => r.features)), "accessible"];
+  const typeLabels = {
+    auditorium: "Auditorium",
+    seminar_hall: "Seminar Hall",
+    lecture_hall: "Lecture Hall",
+    classroom: "Classroom",
+    outdoor: "Outdoor / OAT",
+    lab_cs: "CS Lab",
+    lab_elec: "Electrical Lab",
+    lab_phy: "Physics Lab",
+    lab_civil: "Civil Lab",
+    workshop: "Workshop"
+  };
+  const typeOrder = ["auditorium", "seminar_hall", "lecture_hall", "classroom", "outdoor", "lab_cs", "lab_elec", "lab_phy", "lab_civil", "workshop"];
+  const sortedTypes = [...types].sort((a, b) => {
+    const ia = typeOrder.indexOf(a);
+    const ib = typeOrder.indexOf(b);
+    return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+  });
 
-  main.innerHTML = `<div class="page-head"><div><h1>New Spectra request</h1>
+  const needLabels = {
+    projector: "Projector",
+    pa_system: "PA System",
+    ac: "AC (Air-con)",
+    stage: "Stage",
+    computers: "Computers",
+    power_benches: "Power Benches",
+    accessible: "Wheelchair Access"
+  };
+  const needOrder = ["projector", "pa_system", "ac", "stage", "computers", "power_benches", "accessible"];
+  const sortedNeeds = [...needs].sort((a, b) => {
+    const ia = needOrder.indexOf(a);
+    const ib = needOrder.indexOf(b);
+    return (ia !== -1 ? ia : 99) - (ib !== -1 ? ib : 99);
+  });
+  const cap = (meta.role_caps || {})[user.role];
+  const capRank = (meta.categories || []).find(c => c.code === cap)?.rank ?? 99;
+  const cats = (meta.categories || []).filter(c => +c.bookable);
+  const periodOpts = sel => (meta.periods || []).map(p => `<option value="${p.id}" ${+sel === +p.id ? "selected" : ""}>P${p.id} ${p.start}</option>`).join("");
+
+  main.innerHTML = `<div class="page-head"><div><h1>New request page</h1>
       <div class="sub">Describe it in your own words or fill the form. Nothing is booked until you submit, and the decision follows the priority rules.</div></div></div>
-    <div class="cols-even">
+    <div class="cols-even request-cols">
       <div class="panel"><h2>Describe it</h2>
         <textarea id="text" rows="4" placeholder="e.g. seminar hall kal shaam 6 baje, 2 ghante, 100 log, mic chahiye"></textarea>
         <div class="actions" style="margin-top:8px"><button class="btn" id="parse">Fill the form</button>
@@ -32,21 +67,34 @@
         <label>When it may take place <span class="muted">(the event must fit inside one window)</span></label>
         <div id="wins"></div><button type="button" class="btn small ghost" id="addWin">${icon("plus")} Add a window</button>
         <label class="check" style="margin:8px 0 12px"><input type="checkbox" id="repeat"> Separate booking for each window (a weekly series)</label>
-        <div class="field"><label>Room types</label><div class="checks" id="types">${types.map(t => `<label class="check"><input type="checkbox" value="${t}"> ${words(t)}</label>`).join("")}</div></div>
-        <div class="field"><label>Needs</label><div class="checks" id="needs">${needs.map(n => `<label class="check"><input type="checkbox" value="${n}"> ${words(n)}</label>`).join("")}</div></div>
+        <div class="row options-split" style="gap:20px;margin:12px 0 16px;align-items:flex-start">
+          <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
+            <label style="font-weight:600;font-size:12.5px;color:var(--c-deep-charcoal);margin-bottom:8px">Room types <span class="muted" style="font-weight:400;font-size:11.5px">(optional)</span></label>
+            <div class="checks-grid" id="types">
+              ${sortedTypes.map(t => `<label class="check" title="${esc(typeLabels[t] || words(t))}"><input type="checkbox" value="${t}"> <span>${esc(typeLabels[t] || words(t))}</span></label>`).join("")}
+            </div>
+          </div>
+          <div class="field" style="flex:1;min-width:240px;margin-bottom:0">
+            <label style="font-weight:600;font-size:12.5px;color:var(--c-deep-charcoal);margin-bottom:8px">Needs & features <span class="muted" style="font-weight:400;font-size:11.5px">(optional)</span></label>
+            <div class="checks-grid" id="needs">
+              ${sortedNeeds.map(n => `<label class="check" title="${esc(needLabels[n] || words(n))}"><input type="checkbox" value="${n}"> <span>${esc(needLabels[n] || words(n))}</span></label>`).join("")}
+            </div>
+          </div>
+        </div>
         <div class="row"><div class="field"><label for="room">Preferred room <span class="muted">(optional)</span></label>
-            <select id="room"><option value="">Any suitable room</option>${meta.rooms.filter(r => r.allowed_uses.includes("event")).map(r => `<option value="${r.id}">${r.id} · ${esc(r.name)} (${r.capacity}${r.accessible ? "" : ", not step-free"})</option>`).join("")}</select></div>
+            <select id="room"><option value="">Any suitable room</option>${rooms.filter(r => r.allowed_uses.includes("event")).map(r => `<option value="${r.id}">${r.id} · ${esc(r.name)} (${r.capacity}${r.accessible ? "" : ", not step-free"})</option>`).join("")}</select></div>
           <div class="field"><label for="groups">Mandatory for groups <span class="muted">(optional)</span></label>
-            <select id="groups" multiple size="3">${meta.groups.map(g => `<option value="${g.id}">${g.id} · ${esc(g.name)}</option>`).join("")}</select></div></div>
+            <select id="groups" multiple size="3">${(meta.groups || []).map(g => `<option value="${g.id}">${g.id} · ${esc(g.name)}</option>`).join("")}</select></div></div>
         <div class="actions"><button class="btn primary" id="submit">Submit request</button><button type="button" class="btn" id="avail">Check rooms for the first window</button></div>
         <div id="result" style="margin-top:12px"></div>
       </form></div>`;
 
   const winsEl = document.getElementById("wins");
-  function addWindow(w = { day: meta.days[0], from_period: 10, to_period: 13 }) {
+  const days = meta.days || [];
+  function addWindow(w = { day: days[0], from_period: 10, to_period: 13 }) {
     const row = document.createElement("div");
     row.className = "row win";
-    row.innerHTML = `<div class="field"><select class="wd" aria-label="Day">${meta.days.map(d => `<option ${d === w.day ? "selected" : ""}>${d}</option>`).join("")}</select></div>
+    row.innerHTML = `<div class="field"><select class="wd" aria-label="Day">${days.map(d => `<option ${d === w.day ? "selected" : ""}>${d}</option>`).join("")}</select></div>
       <div class="field"><select class="wf" aria-label="From">${periodOpts(w.from_period)}</select></div>
       <div class="field"><select class="wt" aria-label="Until">${periodOpts(w.to_period)}</select></div>
       <button type="button" class="btn ghost small" aria-label="Remove window" style="margin-top:3px">${icon("x")}</button>`;
@@ -111,12 +159,18 @@
     const body = collect();
     const out = document.getElementById("result");
     try {
-      const r = await CIT.busy(document.getElementById("submit"), "Deciding", () => CIT.api("bookings/create.php", body));
+      const r = await CIT.busy(document.getElementById("submit"), "Checking clashes & deciding", () => CIT.api("bookings/create.php", body));
       out.innerHTML = r.decisions.map((d, i) => d ? `<div class="callout ${d.status === "approved" ? "ok" : d.status === "rejected" ? "bad" : "warn"}">
-          <span class="mono">${esc(r.request_ids[i])}</span> ${statusTag(d.status)} ${d.room_id ? `<span class="mono">${esc(d.room_id)}</span> ${slot(d.day, d.start_period, d.end_period)}` : ""}
-          <div style="margin-top:4px">${esc(d.reason)}</div>${d.effective_category !== body.requested_category ? `<div class="muted">Counted as ${words(d.effective_category)} for your role.</div>` : ""}</div>`
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span class="mono"><b>${esc(r.request_ids[i])}</b></span>
+            ${d.status === "rejected" ? `<span class="tag bad">Rejected (Clash)</span>` : d.status === "pending" ? `<span class="tag warn">Pending Dean Approval</span>` : statusTag(d.status)}
+            ${d.room_id ? `<span class="mono">${esc(d.room_id)}</span> ${slot(d.day, d.start_period, d.end_period)}` : ""}
+          </div>
+          <div>${esc(d.reason)}</div>
+          ${d.effective_category !== body.requested_category ? `<div class="muted" style="margin-top:4px">Counted as ${words(d.effective_category)} for your role.</div>` : ""}
+        </div>`
         : `<div class="callout"><span class="mono">${esc(r.request_ids[i])}</span> saved. It will be decided once a timetable exists.</div>`).join("") +
-        `<a href="bookings.html?id=${encodeURIComponent(r.request_ids[0])}">Open in Spectra bookings</a>`;
+        (r.decisions.some(d => d && d.status !== "rejected") ? `<div style="margin-top:10px"><a href="bookings.html?id=${encodeURIComponent(r.request_ids[0])}">Open in Spectra bookings</a></div>` : "");
     } catch (err) { out.innerHTML = CIT.errorHtml(err); }
   };
   document.getElementById("avail").onclick = async ev => {

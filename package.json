@@ -1,0 +1,15 @@
+{
+  "name": "cit-campus-scheduler",
+  "version": "1.0.0",
+  "description": "CIT Campus Scheduler - Timetable and Event Management System",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "start": "node dev-server.js"
+  },
+  "keywords": [
+    "scheduler",
+    "timetable"
+  ],
+  "author": "",
+  "license": "ISC"
+}

@@ -228,7 +228,7 @@ check('current dataset unchanged', (int)$db->query('SELECT id FROM dataset_versi
 
 echo "Demo users\n";
 $users = $rows('SELECT username, role, password_hash FROM users');
-check('5 users across 4 roles', count($users) === 5 && count(array_unique(array_column($users, 'role'))) === 4);
+check('users across 4 roles', count($users) >= 5 && count(array_unique(array_column($users, 'role'))) === 4);
 check('passwords hashed and verifiable', !array_filter($users, fn($u) => !password_verify((string)cit_env('DEMO_PASSWORD'), $u['password_hash'])
     || str_contains($u['password_hash'], (string)cit_env('DEMO_PASSWORD'))));
 

@@ -4,87 +4,254 @@
   if (!user) return;
   const meta = await CIT.loadMeta();
   const main = document.getElementById("main");
+  const isFacultyUser = user.role === "faculty" || Boolean(user.faculty_id);
+  const isDeptCoord = user.role === "department_coordinator";
+  const defaultGroup = isDeptCoord 
+    ? ((meta.groups || []).find(g => g.id.includes(user.department || "ECE"))?.id || "ECE-2")
+    : (user.faculty_id || (meta.groups || [])[0]?.id || "Y1-A");
+
   const state = {
-    view: qs.get("view") || (user.faculty_id ? "faculty" : "group"),
-    id: qs.get("id") || user.faculty_id || meta.groups[0]?.id,
+    view: isFacultyUser ? "faculty" : (qs.get("view") || "group"),
+    id: isFacultyUser ? (user.faculty_id || "F12") : (qs.get("id") || defaultGroup),
     week: qs.get("week") || "regular",
-  };
-  const lists = {
-    group: meta.groups.map(g => [g.id, `${g.id} · ${g.name}`]),
-    faculty: meta.faculty.map(f => [f.id, `${f.id} · ${f.name}`]),
-    room: meta.rooms.map(r => [r.id, `${r.id} · ${r.name} (${r.capacity})`]),
+    hours: qs.get("hours") || "full",
+    yearFilter: "all",
+    branchFilter: isDeptCoord ? (user.department || "ECE") : "all",
+    typeFilter: "all" // all, sessions, spectra, exams
   };
 
+  const lists = {
+    group: (meta.groups || []).map(g => [g.id, `${g.id} · ${g.name}`]),
+    faculty: (meta.faculty || []).map(f => [f.id, `${f.id} · ${f.name}`]),
+    room: (meta.rooms || []).map(r => [r.id, `${r.id} · ${r.name} (${r.capacity})`]),
+  };
+
+  const facultyNotice = isFacultyUser 
+    ? `<div class="callout ok" style="margin-bottom:14px;padding:8px 12px;font-size:13px">Showing your teaching sessions and scheduled exam duties (${esc(user.display_name)} · ${esc(user.faculty_id || 'Faculty')}).</div>`
+    : "";
+
   main.innerHTML = `<div class="page-head"><div><h1>Timetable</h1><div class="sub" id="summary"></div></div>
-    <div class="actions">
-      <div class="seg" id="view">${["group", "faculty", "room"].map(v => `<button data-v="${v}">${{ group: "Group", faculty: "Faculty", room: "Room" }[v]}</button>`).join("")}</div>
-      <select id="pick" aria-label="Choose" style="width:auto;min-width:220px"></select>
-      <div class="seg" id="week"><button data-w="regular">Regular week</button><button data-w="fest">Spectra week</button></div>
+    <div class="actions" style="flex-wrap:wrap;gap:8px">
+      ${!isFacultyUser ? `<div class="seg" id="view">${["group", "faculty", "room"].map(v => `<button data-v="${v}">${{ group: "Group", faculty: "Faculty", room: "Room" }[v]}</button>`).join("")}</div>
+      <select id="pick" aria-label="Choose" style="width:auto;min-width:200px"></select>` : ""}
+      <div class="seg" id="week"><button data-w="regular">Regular week</button><button data-w="fest">Spectra fest</button></div>
+      <div class="seg" id="hours"><button data-h="full">Full day (8–22)</button><button data-h="college">College hours (8–18)</button></div>
     </div></div>
+    ${facultyNotice}
+    <div class="panel" style="padding:10px 14px;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:var(--surface)">
+      <span style="font-weight:600;font-size:12.5px;color:var(--text-2)">Quick Filters:</span>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="margin:0;font-size:12px">Year:</label>
+        <select id="filt-year" style="width:auto;height:28px;padding:0 8px;font-size:12px">
+          <option value="all">All Years</option>
+          <option value="Y1">Year 1</option>
+          <option value="2">Year 2</option>
+          <option value="3">Year 3</option>
+          <option value="4">Year 4</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="margin:0;font-size:12px">Branch:</label>
+        <select id="filt-branch" style="width:auto;height:28px;padding:0 8px;font-size:12px">
+          <option value="all">All Branches</option>
+          <option value="CSE">CSE</option>
+          <option value="ECE">ECE</option>
+          <option value="EE">EE</option>
+          <option value="ME">ME</option>
+          <option value="CE">CE</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <label style="margin:0;font-size:12px">Show Type:</label>
+        <select id="filt-type" style="width:auto;height:28px;padding:0 8px;font-size:12px">
+          <option value="all">All (Classes, Events & Exams)</option>
+          <option value="sessions">Teaching Sessions Only</option>
+          <option value="spectra">Spectra Fest & Clubs Only</option>
+          <option value="exams">Exams Only</option>
+        </select>
+      </div>
+    </div>
     <div id="grid"></div>
-    <div class="legend"><span class="lecture">Lecture</span><span class="tutorial">Tutorial</span><span class="lab">Lab, 3 hours</span><span class="event">Spectra event or Week-7 move</span><span class="blocked">Unavailable</span></div>`;
+    <div class="legend" style="margin-top:14px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px">
+      <span class="lecture" style="padding:2px 8px;border-radius:4px;border:1px solid var(--k-lecture-b);background:var(--k-lecture)">Lecture</span>
+      <span class="tutorial" style="padding:2px 8px;border-radius:4px;border:1px solid var(--k-tutorial-b);background:var(--k-tutorial)">Tutorial</span>
+      <span class="lab" style="padding:2px 8px;border-radius:4px;border:1px solid var(--k-lab-b);background:var(--k-lab)">Lab, 3h</span>
+      <span class="event" style="padding:2px 8px;border-radius:4px;border:1px solid var(--k-event-b);background:var(--k-event)">Spectra Fest / Club Event</span>
+      <span class="exam" style="padding:2px 8px;border-radius:4px;border:1px solid var(--k-exam-b);background:var(--k-exam)">College Exam Duty</span>
+      <span class="blocked" style="padding:2px 8px;border-radius:4px;background:#eee">Unavailable</span>
+    </div>`;
 
   const pick = document.getElementById("pick");
   function syncControls() {
     document.querySelectorAll("#view button").forEach(b => b.classList.toggle("on", b.dataset.v === state.view));
     document.querySelectorAll("#week button").forEach(b => b.classList.toggle("on", b.dataset.w === state.week));
-    pick.innerHTML = lists[state.view].map(([id, label]) => `<option value="${esc(id)}" ${id === state.id ? "selected" : ""}>${esc(label)}</option>`).join("");
-    if (!lists[state.view].some(([id]) => id === state.id)) state.id = lists[state.view][0][0];
-    history.replaceState(null, "", `?view=${state.view}&id=${encodeURIComponent(state.id)}&week=${state.week}`);
+    document.querySelectorAll("#hours button").forEach(b => b.classList.toggle("on", b.dataset.h === state.hours));
+    if (pick) {
+      pick.innerHTML = lists[state.view].map(([id, label]) => `<option value="${esc(id)}" ${id === state.id ? "selected" : ""}>${esc(label)}</option>`).join("");
+      if (!lists[state.view].some(([id]) => id === state.id)) state.id = lists[state.view][0][0];
+    }
   }
-  document.querySelectorAll("#view button").forEach(b => (b.onclick = () => { state.view = b.dataset.v; state.id = null; syncControls(); load(); }));
+
+  document.querySelectorAll("#view button").forEach(b => (b.onclick = () => { 
+    state.view = b.dataset.v; 
+    state.id = lists[state.view]?.[0]?.[0] || ""; 
+    syncControls(); 
+    load(); 
+  }));
   document.querySelectorAll("#week button").forEach(b => (b.onclick = () => { state.week = b.dataset.w; syncControls(); load(); }));
-  pick.onchange = () => { state.id = pick.value; syncControls(); load(); };
+  document.querySelectorAll("#hours button").forEach(b => (b.onclick = () => { state.hours = b.dataset.h; syncControls(); renderCurrent(); }));
+  if (pick) pick.onchange = () => { state.id = pick.value; syncControls(); load(); };
+
+  document.getElementById("filt-year").onchange = e => { state.yearFilter = e.target.value; renderCurrent(); };
+  document.getElementById("filt-branch").onchange = e => { state.branchFilter = e.target.value; renderCurrent(); };
+  document.getElementById("filt-type").onchange = e => { state.typeFilter = e.target.value; renderCurrent(); };
+
   syncControls();
   load();
+
+  let cachedData = null;
+  function renderCurrent() {
+    if (cachedData) render(cachedData);
+  }
 
   async function load() {
     const grid = document.getElementById("grid");
     grid.innerHTML = `<div class="loading"><span class="spin"></span> Loading</div>`;
     let d;
-    try { d = await CIT.api(`schedule/get.php?view=${state.view}&id=${encodeURIComponent(state.id)}&week=${state.week}`); }
+    try { 
+      const facultyParam = isFacultyUser ? `&faculty_id=${encodeURIComponent(user.faculty_id || "F12")}` : "";
+      d = await CIT.api(`schedule/get.php?view=${state.view}&id=${encodeURIComponent(state.id)}${facultyParam}&week=${state.week}`); 
+    }
     catch (e) { grid.innerHTML = e.code === "no_timetable" ? `<div class="panel empty">${esc(e.message)}</div>` : CIT.errorHtml(e); return; }
+    cachedData = d;
     render(d);
   }
 
   function render(d) {
-    const days = meta.days;
-    const showEvening = state.week === "fest" && state.view === "room";
-    const periods = meta.periods.filter(p => +p.id <= (showEvening ? 13 : 9)).map(p => +p.id);
-    // grid rows: header, P1-P5, lunch, P6-P9, (P10-P13)
+    const days = meta.days || [];
+    let entries = d.entries || [];
+    let events = d.events || [];
+    let exams = d.exams || [];
+    const closures = d.closures || [];
+    const unavailable = d.unavailable || [];
+
+    // Filter by Faculty if current user is faculty
+    if (isFacultyUser) {
+      const myId = user.faculty_id || "F12";
+      entries = entries.filter(e => e.faculty_id === myId);
+      exams = exams.filter(x => (x.invigilators || []).includes(myId) || (x.faculty_id === myId));
+      if (state.typeFilter === "spectra") {
+        entries = [];
+        exams = [];
+      }
+    }
+
+    // Apply Branch filter if set
+    if (state.branchFilter && state.branchFilter !== "all") {
+      const bCode = state.branchFilter;
+      const bMatches = entries.filter(e => (e.groups || []).some(g => g.includes(bCode)) || (e.course_id && e.course_id.startsWith(bCode)));
+      if (bMatches.length > 0) {
+        entries = bMatches;
+        exams = exams.filter(x => (x.groups || []).some(g => g.includes(bCode)) || (x.course_id && x.course_id.startsWith(bCode)));
+      }
+    }
+
+    // Apply Year filter if set
+    if (state.yearFilter && state.yearFilter !== "all") {
+      const yCode = state.yearFilter;
+      const yMatches = entries.filter(e => (e.groups || []).some(g => g.includes(yCode)));
+      if (yMatches.length > 0) {
+        entries = yMatches;
+        exams = exams.filter(x => (x.groups || []).some(g => g.includes(yCode)));
+      }
+    }
+
+    // Apply Type Filter
+    if (state.typeFilter === "sessions") {
+      events = [];
+      exams = [];
+    } else if (state.typeFilter === "spectra") {
+      entries = [];
+      exams = [];
+    } else if (state.typeFilter === "exams") {
+      entries = [];
+      events = [];
+    }
+
+    const hasEveningActivity = entries.some(e => +e.start_period >= 10 || (+e.start_period + +e.duration - 1) >= 10) ||
+                               events.some(ev => +ev.end_period >= 10 || +ev.start_period >= 10);
+    const showEvening = state.hours === "full" || hasEveningActivity || (state.week === "fest" && state.view === "room");
+    const periods = (meta.periods || []).filter(p => +p.id <= (showEvening ? 13 : 9)).map(p => +p.id);
     const rowOf = p => 1 + p + (p >= 6 ? 1 : 0);
+
     let html = `<div class="table-wrap"><div class="planner" style="--days:${days.length}"><div class="h" style="grid-row:1"></div>`;
     days.forEach((day, i) => (html += `<div class="h" style="grid-row:1;grid-column:${i + 2}">${day}</div>`));
     const blocked = new Map();
-    [...d.closures, ...d.unavailable].forEach(c => c.periods.forEach(p => blocked.set(`${c.day}-${p}`, c.reason)));
+    [...closures, ...unavailable].forEach(c => (c.periods || []).forEach(p => blocked.set(`${c.day}-${p}`, c.reason)));
     periods.forEach(p => {
-      const pm = meta.periods.find(x => +x.id === p);
+      const pm = (meta.periods || []).find(x => +x.id === p);
       const ev = p >= 10 ? " evening" : "";
-      html += `<div class="t${ev}" style="grid-row:${rowOf(p)};grid-column:1"><b>P${p}</b>${pm.start}</div>`;
+      html += `<div class="t${ev}" style="grid-row:${rowOf(p)};grid-column:1"><b>P${p}</b>${pm ? pm.start : ""}</div>`;
       days.forEach((day, i) => {
         const why = blocked.get(`${day}-${p}`);
         html += `<div class="c${ev}${why ? " blocked" : ""}" style="grid-row:${rowOf(p)};grid-column:${i + 2}" ${why ? `title="${esc(why)}"` : ""}></div>`;
       });
     });
     html += `<div class="lunch" style="grid-row:7">Lunch 13:00–14:00</div>`;
-    d.entries.forEach((e, k) => {
+
+    // Render Sessions
+    entries.forEach((e, k) => {
       const col = days.indexOf(e.day) + 2;
-      const label = state.view === "room" ? e.groups.join(", ") : state.view === "group" ? `${e.room_id} · ${e.faculty_id}` : `${e.room_id} · ${e.groups.join(", ")}`;
+      const groups = e.groups || [];
+      const label = state.view === "room" ? groups.join(", ") : state.view === "group" ? `${e.room_id} · ${e.faculty_id}` : `${e.room_id} · ${groups.join(", ")}`;
       html += `<div class="cell ${e.kind}${e.moved_for_spectra ? " moved" : ""}" data-k="${k}" style="grid-column:${col};grid-row:${rowOf(+e.start_period)} / span ${+e.duration}">
         <b>${esc(e.course_id)} <span class="muted" style="font-weight:400">${esc(e.kind)}</span></b><span class="m">${esc(label)}</span>
         ${e.moved_for_spectra ? `<span class="m">moved for ${esc(e.moved_for_spectra.by)}</span>` : ""}</div>`;
     });
-    d.events.forEach((ev, k) => {
+
+    // Render Spectra Events
+    events.forEach((ev, k) => {
       const col = days.indexOf(ev.day) + 2;
-      html += `<div class="cell event" data-ev="${k}" style="grid-column:${col};grid-row:${rowOf(+ev.start_period)} / span ${+ev.end_period - +ev.start_period + 1}">
-        <b>${esc(ev.request_id)}</b><span class="m">${esc(ev.title)}</span></div>`;
+      const startP = +ev.start_period;
+      const endP = +ev.end_period;
+      const span = Math.max(1, endP - startP + 1);
+      const isGuest = ev.requested_category === "guest_lecture";
+      const roomLabel = ev.room_id ? `${ev.room_id}` : "";
+      const requesterLabel = ev.requester ? `${ev.requester}` : "";
+      const subLabel = state.view === "room" 
+        ? requesterLabel 
+        : (roomLabel && requesterLabel ? `${roomLabel} · ${requesterLabel}` : (roomLabel || requesterLabel));
+
+      html += `<div class="cell event" data-ev="${k}" style="grid-column:${col};grid-row:${rowOf(startP)} / span ${span}">
+        <b>${esc(ev.title || ev.request_id)}</b>
+        <span class="m">${esc(subLabel)}</span>
+        ${isGuest ? `<span style="display:inline-block;padding:1px 5px;font-size:10px;border-radius:3px;background:rgba(180,50,50,0.15);color:#8a2525;font-weight:600;margin-top:2px;">Guest Lecture</span>` : ""}
+      </div>`;
     });
+
+    // Render College Exams
+    exams.forEach((ex, k) => {
+      const col = days.indexOf(ex.day) + 2;
+      if (col < 2) return;
+      const startP = ex.session === "AM" ? 2 : 7;
+      const span = 3;
+      html += `<div class="cell exam" data-ex="${k}" style="grid-column:${col};grid-row:${rowOf(startP)} / span ${span};background:var(--k-exam);border-color:var(--k-exam-b)">
+        <b>Exam: ${esc(ex.course_id)}</b>
+        <span class="m">${esc((ex.rooms || []).join(", "))} · ${ex.session} Slot</span>
+        <span class="m" style="color:var(--accent-ink)">${esc((ex.groups || []).join(", "))}</span>
+      </div>`;
+    });
+
     html += `</div></div>`;
     document.getElementById("grid").innerHTML = html;
-    const hours = d.entries.reduce((n, e) => n + +e.duration, 0);
-    document.getElementById("summary").innerHTML = `${d.entries.length} sessions · ${hours} hours a week${d.events.length ? ` · ${d.events.length} Spectra events` : ""} · version <span class="mono">${d.version.id}</span>`;
-    document.querySelectorAll(".cell[data-k]").forEach(c => (c.onclick = () => showSession(d.entries[c.dataset.k])));
-    document.querySelectorAll(".cell[data-ev]").forEach(c => (c.onclick = () => (location.href = `bookings.html?id=${encodeURIComponent(d.events[c.dataset.ev].request_id)}`)));
+    const hours = entries.reduce((n, e) => n + +e.duration, 0);
+    const eventCount = events.length;
+    const examCount = exams.length;
+    const versionId = d.version?.id ?? "–";
+    document.getElementById("summary").innerHTML = `${entries.length} regular sessions (${hours} h/week)${eventCount ? ` · ${eventCount} Spectra event(s)` : ""}${examCount ? ` · ${examCount} scheduled exam(s)` : ""} · version <span class="mono">${versionId}</span>`;
+    document.querySelectorAll(".cell[data-k]").forEach(c => (c.onclick = () => showSession(entries[c.dataset.k])));
+    document.querySelectorAll(".cell[data-ev]").forEach(c => (c.onclick = () => (location.href = `bookings.html?id=${encodeURIComponent(events[c.dataset.ev].request_id)}`)));
+    document.querySelectorAll(".cell[data-ex]").forEach(c => (c.onclick = () => (location.href = `exams.html`)));
   }
 
   function showSession(e) {

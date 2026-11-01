@@ -33,9 +33,21 @@ foreach ($entries as $r) {
     if ($match) $rows[] = $r;
 }
 $events = [];
-if ($fest && $view === 'room') {
-    $st = $db->prepare("SELECT d.request_id, d.status, d.day, d.start_period, d.end_period, b.title, b.requester FROM booking_decisions d
+if ($view === 'room') {
+    $st = $db->prepare("SELECT d.request_id, d.status, d.day, d.start_period, d.end_period, d.room_id, b.title, b.requester, b.requested_category FROM booking_decisions d
                         JOIN booking_requests b ON b.id = d.request_id WHERE d.schedule_version_id = ? AND d.room_id = ? AND d.status <> 'rejected'");
+    $st->execute([$vid, $id]);
+    $events = $st->fetchAll();
+} elseif ($view === 'faculty') {
+    $st = $db->prepare("SELECT d.request_id, d.status, d.day, d.start_period, d.end_period, d.room_id, b.title, b.requester, b.requested_category FROM booking_decisions d
+                        JOIN booking_requests b ON b.id = d.request_id WHERE d.schedule_version_id = ? AND d.status <> 'rejected'
+                        AND (b.created_by IN (SELECT id FROM users WHERE faculty_id = ?) OR b.requester LIKE ? OR b.requester IN (SELECT name FROM faculty WHERE id = ?))");
+    $st->execute([$vid, $id, "%($id)%", $id]);
+    $events = $st->fetchAll();
+} elseif ($view === 'group') {
+    $st = $db->prepare("SELECT d.request_id, d.status, d.day, d.start_period, d.end_period, d.room_id, b.title, b.requester, b.requested_category FROM booking_decisions d
+                        JOIN booking_requests b ON b.id = d.request_id WHERE d.schedule_version_id = ? AND d.status <> 'rejected'
+                        AND JSON_CONTAINS(COALESCE(b.mandatory_for_groups, '[]'), JSON_QUOTE(?))");
     $st->execute([$vid, $id]);
     $events = $st->fetchAll();
 }

@@ -87,7 +87,7 @@ function cit_llm_chat(string $system, array $messages, string $feature, ?int $us
             $body = ['model' => $model, 'temperature' => 0, 'max_tokens' => $maxTokens,
                      'messages' => array_merge([['role' => 'system', 'content' => $system]], $messages)];
             if ($json) $body['response_format'] = ['type' => 'json_object'];
-            $res = cit_http_json(rtrim(cit_env('LLM_BASE_URL', 'https://api.openai.com/v1'), '/') . '/chat/completions',
+            $res = cit_http_json(rtrim(cit_env('LLM_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai'), '/') . '/chat/completions',
                 ['Authorization: Bearer ' . $key], $body);
             $text = $res['choices'][0]['message']['content'] ?? '';
             $tin = $res['usage']['prompt_tokens'] ?? null; $tout = $res['usage']['completion_tokens'] ?? null;
@@ -120,7 +120,7 @@ function cit_embed(array $texts, ?int $userId = null): ?array
     if (!cit_embed_available() || !$texts) return null;
     $t0 = microtime(true);
     try {
-        $res = cit_http_json(rtrim(cit_env('EMBED_BASE_URL', cit_env('LLM_BASE_URL', 'https://api.openai.com/v1')), '/') . '/embeddings',
+        $res = cit_http_json(rtrim(cit_env('EMBED_BASE_URL', cit_env('LLM_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai')), '/') . '/embeddings',
             ['Authorization: Bearer ' . (cit_env('EMBED_API_KEY') ?? cit_env('LLM_API_KEY'))],
             ['model' => cit_env('EMBED_MODEL'), 'input' => array_values($texts)], 30);
         $out = array_map(fn($d) => $d['embedding'], $res['data'] ?? []);

@@ -32,6 +32,7 @@ class Client:
         data = None if body is None else json.dumps(body).encode()
         req = urllib.request.Request(BASE + "/api/" + path, data=data, method="GET" if body is None else "POST")
         req.add_header("Content-Type", "application/json")
+        req.add_header("Connection", "close")
         if self.csrf:
             req.add_header("X-CSRF-Token", self.csrf)
         try:
