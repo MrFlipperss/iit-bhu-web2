@@ -17,10 +17,6 @@ const ICONS = {
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   send: '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>',
-  arrowUpRight: '<path d="M7 17L17 7M17 7H7M17 7V17"/>',
-  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
-  user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
-  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
 };
 
 function icon(name) {
@@ -809,7 +805,7 @@ const CIT = {
         const x = rawExams[i];
         const sched = schedExamMap.get(x.id) || {};
         const groups = x.groups || [];
-        const invigilators = sched.invigilators || [ (data.faculty || [])[i % (data.faculty || []).length]?.id || "F12" ];
+        const invigilators = sched.invigilators || [(data.faculty || [])[i % (data.faculty || []).length]?.id || "F12"];
 
         let examMatch = false;
         if (view === "group" && targetId) {
@@ -2103,64 +2099,23 @@ const CIT = {
     const sidebarEl = document.getElementById("sidebar");
     if (sidebarEl) {
       sidebarEl.innerHTML = `
-        <div class="brand">
-          <a href="dashboard.html" class="brand-pill">
-            <div class="brand-mark" style="width:18px;height:18px;padding:3px;margin-right:2px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="brand-pill-title">CIT Scheduler</span>
-          </a>
-        </div>
-        <nav class="nav" id="main-nav">${nav}<button class="nav-scroll-arrow" id="navScrollRight" type="button" title="More options" aria-label="Scroll for more options"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button></nav>
-        <div class="user-box">
-          <button class="user-pill-btn" id="logout" title="Sign out" aria-label="Sign out">
-            <div class="user-avatar">${esc((u.display_name || "U").charAt(0))}</div>
-            <div class="user-info">
-              <span class="user-name">${esc(u.display_name || "User")}</span>
-              <span class="role">${esc(roleLabel)}${u.faculty_id ? " · " + esc(u.faculty_id) : ""}</span>
-            </div>
-            <span class="user-logout-icon" aria-hidden="true">${icon("logout")}</span>
-          </button>
-        </div>`;
+        <div class="brand"><div class="brand-mark">${"<i></i>".repeat(9)}</div>
+          <div class="brand-name">CIT Scheduler<small>Chilika Institute of Technology</small></div></div>
+        <nav class="nav">${nav}</nav>
+        <div class="user-box"><div>${esc(u.display_name)}</div><div class="role">${roleLabel}${u.faculty_id ? " · " + u.faculty_id : ""}</div>
+          <button class="btn ghost small" id="logout">${icon("logout")} Log out</button></div>`;
     }
     const topbarEl = document.getElementById("topbar");
     if (topbarEl) {
-      topbarEl.innerHTML = `
-        <a href="dashboard.html" class="brand-pill" style="padding:4px 14px;font-size:13px">
-          <div class="brand-mark" style="width:18px;height:18px;padding:3px;margin-right:2px"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="brand-pill-title">CIT Scheduler</span>
-        </a>
-        <div style="display:flex;align-items:center;gap:8px">
-          <button class="icon-btn" id="menu" aria-label="Menu">${icon("menu")}</button>
-        </div>`;
+      topbarEl.innerHTML = `<button class="btn ghost small" id="menu" aria-label="Menu">${icon("menu")}</button>
+        <span class="brand-name">CIT Scheduler</span><span></span>`;
     }
-        document.getElementById("menu")?.addEventListener("click", () => document.querySelector(".shell")?.classList.toggle("nav-open"));
+    document.getElementById("menu")?.addEventListener("click", () => document.querySelector(".shell")?.classList.toggle("nav-open"));
     document.getElementById("logout")?.addEventListener("click", async () => {
       CIT.setCurrentUser(null);
       localStorage.removeItem("CIT_USER_SESSION");
       location.href = "/index.html";
     });
-    const navEl = document.getElementById("main-nav");
-    const navArrow = document.getElementById("navScrollRight");
-    if (navEl && navArrow) {
-      const updateArrow = () => {
-        const atEnd = navEl.scrollLeft + navEl.clientWidth >= navEl.scrollWidth - 10;
-        if (atEnd) {
-          navArrow.style.transform = "rotate(180deg)";
-          navArrow.title = "Scroll back to start";
-        } else {
-          navArrow.style.transform = "rotate(0deg)";
-          navArrow.title = "Scroll for more options";
-        }
-      };
-      navEl.addEventListener("scroll", updateArrow, { passive: true });
-      navArrow.addEventListener("click", (e) => {
-        e.preventDefault();
-        const atEnd = navEl.scrollLeft + navEl.clientWidth >= navEl.scrollWidth - 10;
-        if (atEnd) {
-          navEl.scrollTo({ left: 0, behavior: "smooth" });
-        } else {
-          navEl.scrollBy({ left: 180, behavior: "smooth" });
-        }
-      });
-      setTimeout(updateArrow, 120);
-    }
   },
 
   toast(msg, bad = false) {
