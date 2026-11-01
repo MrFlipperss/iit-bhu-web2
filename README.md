@@ -5,7 +5,7 @@ for 189 sessions, plans 41 midsem exams, decides all Spectra (Week 7) room reque
 rules, and repairs the timetable after faculty leave, room closures or new sessions while moving as few
 sessions as possible. Requests can be typed in plain English or Hinglish, and every decision comes with its reason.
 
-**Live app:** `https://<your-project>.web.app`  ·  **Video:** `<link>`
+**Live app:** `https://web-hackathon-b7b1a.web.app`  ·  **Video:** `https://drive.google.com/drive/folders/11HrgJ_KWO8Ra2mqIKxrfbQOM76ofvo4d?usp=drive_link`
 
 ## Results on the starter dataset (official `validator.py`)
 
