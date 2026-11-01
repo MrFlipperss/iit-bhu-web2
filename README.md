@@ -18,19 +18,27 @@ sessions as possible. Requests can be typed in plain English or Hinglish, and ev
 | Exam soft penalty | 0 |
 | `schedule_after.json` (sample disruption) | 0 hard violations; only the sessions the changes touch are moved, and room-only moves are preferred |
 
-## Demo accounts
+## Demo & Judge accounts
 
-Password for all accounts: `<DEMO_PASSWORD you set>`
+Password for all accounts: `Kian@2407` *(or `<DEMO_PASSWORD you set>` in `.env`)*
+
+All **62 accounts** from the dataset are seeded into the database (2 Admins, 9 Department Coordinators, 11 Student Clubs, and all 40 Faculty members F01–F40). On the login page (`/index.html`), use the **Quick switcher dropdown** or the one-click demo buttons.
 
 | Account | Role | Notes |
 |---|---|---|
-| `dean@cit.demo` | Admin | Office of the Dean of Academics |
-| `spectra@cit.demo` | Admin | Spectra Core Team. Owns BR-01 and others, so the Dean must review those (no self-approval) |
-| `coord.ece@cit.demo` | Department coordinator | ECE Department |
-| `f12@cit.demo` | Faculty | Dr. Amit Behera (F12): can report unavailability |
-| `dramatics@cit.demo` | Club | Dramatics Society |
+| `dean@cit.demo` | Admin | Office of the Dean of Academics (owns BR-03; cannot self-approve) |
+| `spectra@cit.demo` | Admin | Spectra Core Team (owns BR-01, BR-11a/b, BR-16, BR-20) |
+| `coord.ece@cit.demo` | Department coordinator | ECE Department (owns BR-08) |
+| `coord.ce@cit.demo` | Department coordinator | Civil Engineering Department (owns BR-18) |
+| `tnp@cit.demo` | Department coordinator | Training and Placement Cell (owns BR-13) |
+| `coding@cit.demo` | Club | Coding Club (owns BR-02 hackathon) |
+| `dramatics@cit.demo` | Club | Dramatics Society (owns BR-07 stage play) |
+| `f07@cit.demo` | Faculty | Dr. Pooja Das (F07, CSE): leave reporting disruption |
+| `f12@cit.demo` | Faculty | Dr. Amit Behera (F12, ECE): owns BR-19, schedule chat |
 
-Admin → **Reset demo data** restores the starter pack. Then use **Generate** on the Overview.
+> 📖 **Full credentials list & judge testing guide:** See [`USER_CREDENTIALS.md`](USER_CREDENTIALS.md) for the complete list of all 62 accounts with their faculty IDs, departments, request mappings, and evaluation walkthroughs.
+
+Admin → **Reset demo data** restores the starter pack and re-seeds all 62 accounts. Then use **Generate** on the Overview.
 
 ## Architecture
 
